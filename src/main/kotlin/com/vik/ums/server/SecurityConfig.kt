@@ -1,5 +1,4 @@
-package com.vik.cal.web.server
-
+package com.vik.ums.server
 
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration

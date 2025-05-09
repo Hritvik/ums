@@ -1,4 +1,4 @@
-package com.vik.cal.web.server
+package com.vik.ums.server
 
 import mu.KotlinLogging
 import org.springframework.stereotype.Component

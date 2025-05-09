@@ -1,7 +1,7 @@
-package com.vik.cal.db.helpers
+package com.vik.ums.db.helpers
 
-import com.vik.cal.db.documents.User
-import com.vik.cal.db.repositories.UserRepository
+import com.vik.ums.db.documents.User
+import com.vik.ums.db.repositories.UserRepository
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.reactive.asFlow
 import kotlinx.coroutines.reactor.awaitSingle

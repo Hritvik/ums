@@ -1,4 +1,4 @@
-package com.vik.cal.config
+package com.vik.ums.config
 
 import com.github.benmanes.caffeine.cache.Caffeine
 import org.springframework.cache.CacheManager

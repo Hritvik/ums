@@ -1,6 +1,6 @@
-package com.vik.cal.db.repositories
+package com.vik.ums.db.repositories
 
-import com.vik.cal.db.documents.User
+import com.vik.ums.db.documents.User
 import org.springframework.data.repository.reactive.ReactiveCrudRepository
 import org.springframework.stereotype.Repository
 

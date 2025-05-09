@@ -5,7 +5,7 @@ import org.springframework.boot.runApplication
 import org.springframework.data.mongodb.repository.config.EnableReactiveMongoRepositories
 
 @SpringBootApplication
-@EnableReactiveMongoRepositories(basePackages = ["com.vik.cal.db.repositories"])
+@EnableReactiveMongoRepositories(basePackages = ["com.vik.ums.db.repositories"])
 class UserManagementServiceApplication
 
 fun main(args: Array<String>) {

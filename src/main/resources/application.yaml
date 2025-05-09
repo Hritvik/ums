@@ -3,11 +3,13 @@ spring:
     name: User Management Service
   data:
     mongodb:
-      uri: { MONGO_CONNECTION_URL }
+      uri: ${MONGO_CONNECTION_URL}
   security:
     user:
-      name: { SPRING_USER_NAME }
-      password: { SPRING_USER_PASSWORD }
+      name: ${SPRING_USER_NAME}
+      password: ${SPRING_USER_PASSWORD}
+server:
+  port: ${SERVER_PORT}
 cache:
   caffeine:
     maximum-size: 100

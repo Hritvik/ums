@@ -1,4 +1,4 @@
-package com.vik.cal.utils
+package com.vik.ums.utils
 
 class Constants {
     object ApiPaths {

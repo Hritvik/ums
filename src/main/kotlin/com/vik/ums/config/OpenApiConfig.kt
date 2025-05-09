@@ -1,4 +1,4 @@
-package com.vik.cal.config
+package com.vik.ums.config
 
 import io.swagger.v3.oas.models.OpenAPI
 import io.swagger.v3.oas.models.info.Contact
@@ -14,8 +14,8 @@ class OpenApiConfig {
         return OpenAPI()
             .info(
                 Info()
-                    .title("Cal")
-                    .description("API documentation for Cal")
+                    .title("UMS")
+                    .description("API documentation for UMS")
                     .version("1.0.0")
                     .contact(Contact().name("Hritvik Dinkar").email("hritvikdinkar@gmail.com"))
             )

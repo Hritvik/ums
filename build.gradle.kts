@@ -27,6 +27,8 @@ repositories {
 extra["springCloudVersion"] = "2024.0.1"
 
 dependencies {
+	implementation(platform("org.jetbrains.kotlin:kotlin-bom"))
+	implementation("org.jetbrains.kotlin:kotlin-stdlib")
 	implementation("org.springframework.boot:spring-boot-starter-actuator")
 	implementation("org.springframework.boot:spring-boot-starter-data-mongodb-reactive")
 	implementation("org.mongodb:mongodb-driver-kotlin-coroutine")

@@ -1,4 +1,4 @@
-package com.vik.cal.config
+package com.vik.ums.config
 
 import reactor.core.publisher.Hooks
 import jakarta.annotation.PostConstruct

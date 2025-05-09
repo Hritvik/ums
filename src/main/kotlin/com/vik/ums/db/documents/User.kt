@@ -1,4 +1,4 @@
-package com.vik.cal.db.documents
+package com.vik.ums.db.documents
 
 import org.springframework.data.annotation.Id
 import org.springframework.data.mongodb.core.mapping.Document
