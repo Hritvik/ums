@@ -4,6 +4,7 @@ UMS is a standalone service for app-isolated profile management. IAM owns
 identity/authentication; products retain their business data and permissions.
 
 - [Requirements and service-design map](ums-platform/map.md): canonical decision index.
+- [Remaining work items](development/work-items.md): the D–G build breakdown and its scope boundary.
 - [Domain glossary](ums-platform/GLOSSARY.md): profile terminology.
 - [Implementation handoff](ums-platform/issues/08-define-verification-and-implementation-handoff.md): build slices and release gates.
 - [Executable API/event contracts](../contracts/README.md): schemas and fixture validation.
