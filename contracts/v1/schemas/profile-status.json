@@ -29,6 +29,9 @@
           },
           "uniqueItems": true,
           "maxItems": 5
+        },
+        "retentionDeadline": {
+          "$ref": "common.json#/$defs/timestamp"
         }
       },
       "required": [
@@ -62,6 +65,9 @@
           },
           "uniqueItems": true,
           "maxItems": 2
+        },
+        "retentionDeadline": {
+          "$ref": "common.json#/$defs/timestamp"
         }
       }
     }

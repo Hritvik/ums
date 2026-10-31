@@ -40,8 +40,13 @@ class ProfileProvisioningService(
         val policy = lockedPolicy(jdbc, mapper, scope.application())
         val state = persistence.binding(scope)
             ?: return@execute ProfileStatus(nextActions = listOf("WAIT"), readiness = Readiness.PROFILE_REQUIRED)
+        if (state.lifecycle == Lifecycle.CLOSED) return@execute ProfileStatus(
+            state = state, unmetFields = emptyList(), nextActions = listOf("REQUEST_REACTIVATION"),
+            retentionDeadline = persistence.closureDeadline(scope)?.toString(),
+        )
         if (state.lifecycle != Lifecycle.ACTIVE) return@execute ProfileStatus(
             nextActions = listOf("CONTACT_SUPPORT"), readiness = Readiness.PROFILE_REQUIRED,
+            retentionDeadline = persistence.closureDeadline(scope)?.toString(),
         )
         val present = fields.fields(scope).keys
         val unmet = policy!!.requiredFields.filter { it !in present }.sortedBy { it.ordinal }

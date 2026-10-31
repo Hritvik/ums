@@ -75,6 +75,7 @@ data class ProfileStatus(
     val unmetFields: List<ProfileField>? = null,
     val nextActions: List<String>,
     val readiness: Readiness? = null,
+    val retentionDeadline: String? = null,
 )
 
 enum class ProvisioningOutcome { PROVISIONED, DUPLICATE, STALE, NOT_ADOPTED, RECONCILIATION_REQUIRED, RESTRICTED }

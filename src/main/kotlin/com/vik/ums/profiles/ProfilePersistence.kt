@@ -1,6 +1,7 @@
 package com.vik.ums.profiles
 
 import org.springframework.jdbc.core.JdbcTemplate
+import java.time.Instant
 import java.util.UUID
 
 internal class ProfilePersistence(private val jdbc: JdbcTemplate) {
@@ -60,6 +61,12 @@ internal class ProfilePersistence(private val jdbc: JdbcTemplate) {
             fact.scope.issuerEnvironmentRef, fact.scope.appReference, fact.scope.subjectReference,
             fact.producer, fact.streamId, fact.sourceRevision)
     }
+
+    /** Published retention deadline for a closed profile; null when no closure is recorded. */
+    fun closureDeadline(scope: ProfileScope): Instant? = jdbc.query("""select closure_retain_until
+        from ums_profile_bindings where issuer_environment_ref = ? and app_reference = ? and subject_reference = ?""",
+        { rs, _ -> rs.getTimestamp(1)?.toInstant() },
+        scope.issuerEnvironmentRef, scope.appReference, scope.subjectReference).singleOrNull()
 
     fun fingerprint(producer: String, eventId: UUID): String? = jdbc.query(
         "select input_fingerprint from ums_event_inbox where producer = ? and event_id = ?",

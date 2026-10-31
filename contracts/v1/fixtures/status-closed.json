@@ -1,0 +1,22 @@
+{
+  "state": {
+    "scope": {
+      "issuerEnvironmentRef": "4d1f0a5b-2f3c-4a6d-9b7e-0c1d2e3f4a5b",
+      "appReference": "4d1f0a5b-2f3c-4a6d-9b7e-0c1d2e3f4a5b",
+      "subjectReference": "4d1f0a5b-2f3c-4a6d-9b7e-0c1d2e3f4a5b"
+    },
+    "bindingRevision": "2",
+    "policyRevision": "1",
+    "lifecycle": "CLOSED",
+    "readiness": "PROFILE_REQUIRED",
+    "profileReference": "4d1f0a5b-2f3c-4a6d-9b7e-0c1d2e3f4a5b",
+    "generation": "1",
+    "profileRevision": "1",
+    "deletionCauses": {}
+  },
+  "unmetFields": [],
+  "nextActions": [
+    "REQUEST_REACTIVATION"
+  ],
+  "retentionDeadline": "2027-01-29T09:00:00Z"
+}

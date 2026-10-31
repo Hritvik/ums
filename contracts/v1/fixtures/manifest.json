@@ -343,5 +343,10 @@
     "file": "deletion-batch-missing-cursor.json",
     "schema": "deletion-batch-result.json",
     "valid": false
+  },
+  {
+    "file": "status-closed.json",
+    "schema": "profile-status.json",
+    "valid": true
   }
 ]
