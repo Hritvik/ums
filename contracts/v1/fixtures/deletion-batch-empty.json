@@ -1,0 +1,9 @@
+{
+  "app": {
+    "issuerEnvironmentRef": "c1c8540a-8268-4ba9-9029-a5ef73cacbd4",
+    "appReference": "c1c8540a-8268-4ba9-9029-a5ef73cacbd4"
+  },
+  "cutoff": "2026-10-25T00:00:00Z",
+  "results": [],
+  "nextCursor": null
+}

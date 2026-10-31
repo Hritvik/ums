@@ -1,25 +1,35 @@
 spring:
   application:
-    name: User Management Service
-  data:
-    mongodb:
-      uri: ${MONGO_CONNECTION_URL}
-  security:
-    user:
-      name: ${SPRING_USER_NAME}
-      password: ${SPRING_USER_PASSWORD}
+    name: ums
+  datasource:
+    url: ${UMS_DATABASE_URL:}
+    username: ${UMS_DATABASE_USERNAME:}
+    password: ${UMS_DATABASE_PASSWORD:}
+    hikari:
+      maximum-pool-size: 5
+      connection-timeout: 5000
+  flyway:
+    enabled: true
+    clean-disabled: true
+  jackson:
+    deserialization:
+      fail-on-unknown-properties: true
 server:
-  port: ${SERVER_PORT}
-cache:
-  caffeine:
-    maximum-size: 100
-    expire-after-write: 10
-    expire-after-write-unit: MINUTES
-springdoc:
-  api-docs:
-    enabled: true
-  swagger-ui:
-    enabled: true
-logging:
-  level:
-    root: INFO
+  port: ${SERVER_PORT:8080}
+  error:
+    include-message: never
+    include-stacktrace: never
+    include-binding-errors: never
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
+  endpoint:
+    health:
+      show-details: never
+ums:
+  security:
+    issuer: ${UMS_IAM_ISSUER:}
+    jwk-set-uri: ${UMS_IAM_JWK_SET_URI:}
+    audience: ${UMS_RESOURCE_AUDIENCE:}

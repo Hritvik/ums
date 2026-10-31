@@ -1,0 +1,10 @@
+{
+  "operationReference": "c1c8540a-8268-4ba9-9029-a5ef73cacbd4",
+  "operationRevision": "2",
+  "status": "LOCAL_COMPLETED",
+  "acceptedAt": "2026-10-24T00:00:00Z",
+  "deadline": "2026-11-23T00:00:00Z",
+  "cancellationEligible": false,
+  "bindingRevision": "4",
+  "downstreamErased": true
+}

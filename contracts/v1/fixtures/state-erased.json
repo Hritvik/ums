@@ -1,0 +1,12 @@
+{
+  "scope": {
+    "issuerEnvironmentRef": "c1c8540a-8268-4ba9-9029-a5ef73cacbd4",
+    "appReference": "c1c8540a-8268-4ba9-9029-a5ef73cacbd4",
+    "subjectReference": "c1c8540a-8268-4ba9-9029-a5ef73cacbd4"
+  },
+  "bindingRevision": "9007199254740993",
+  "policyRevision": "1",
+  "lifecycle": "ERASED",
+  "readiness": "PROFILE_REQUIRED",
+  "deletionCauses": {}
+}

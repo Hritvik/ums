@@ -1,0 +1,46 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ums.invalid/contracts/v1/safe-error.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "error",
+    "correlationId"
+  ],
+  "properties": {
+    "error": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "code",
+        "message"
+      ],
+      "properties": {
+        "code": {
+          "enum": [
+            "malformed_input",
+            "unauthenticated",
+            "forbidden",
+            "unavailable",
+            "profile_required",
+            "version_conflict",
+            "idempotency_key_reused",
+            "invalid_field",
+            "rate_limited",
+            "internal_error",
+            "temporarily_unavailable"
+          ]
+        },
+        "message": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        }
+      }
+    },
+    "correlationId": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9._:-]{1,128}(?![\\s\\S])"
+    }
+  }
+}

@@ -1,0 +1,66 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ums.invalid/contracts/v1/deletion-request-status.json",
+  "title": "Restricted app-only deletion request status",
+  "description": "PENDING does not mean erased; LOCAL_COMPLETED means only local UMS-owned fields/derived data erased, never downstream acknowledgement or whole-product erasure. Eligibility uses authoritative time/current authority.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "operationReference",
+    "operationRevision",
+    "status",
+    "acceptedAt",
+    "deadline",
+    "cancellationEligible",
+    "bindingRevision"
+  ],
+  "properties": {
+    "operationReference": {
+      "$ref": "common.json#/$defs/uuid"
+    },
+    "operationRevision": {
+      "$ref": "common.json#/$defs/version"
+    },
+    "status": {
+      "enum": [
+        "PENDING",
+        "CANCELLED",
+        "LOCAL_COMPLETED"
+      ]
+    },
+    "acceptedAt": {
+      "$ref": "common.json#/$defs/timestamp"
+    },
+    "deadline": {
+      "$ref": "common.json#/$defs/timestamp"
+    },
+    "cancellationEligible": {
+      "type": "boolean"
+    },
+    "bindingRevision": {
+      "$ref": "common.json#/$defs/version",
+      "description": "Current safe binding concurrency token for cancellation expectedVersion; independent from operationRevision."
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "status": {
+            "enum": [
+              "CANCELLED",
+              "LOCAL_COMPLETED"
+            ]
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "cancellationEligible": {
+            "const": false
+          }
+        }
+      }
+    }
+  ]
+}

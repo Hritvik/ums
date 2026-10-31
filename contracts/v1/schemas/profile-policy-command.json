@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ums.invalid/contracts/v1/profile-policy-command.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "expectedVersion",
+    "policy"
+  ],
+  "properties": {
+    "expectedVersion": {
+      "$ref": "common.json#/$defs/version"
+    },
+    "policy": {
+      "$ref": "profile-policy.json"
+    }
+  }
+}

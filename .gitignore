@@ -38,3 +38,8 @@ out/
 
 ### Kotlin ###
 .kotlin
+
+# Local contract-test environment and operating-system metadata
+.venv/
+__pycache__/
+.DS_Store

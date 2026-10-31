@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ums.invalid/contracts/v1/operation-accepted.json",
+  "type": "object",
+  "properties": {
+    "operationReference": {
+      "$ref": "common.json#/$defs/uuid"
+    },
+    "operationRevision": {
+      "$ref": "common.json#/$defs/version"
+    },
+    "status": {
+      "const": "ACCEPTED"
+    }
+  },
+  "required": [
+    "operationReference",
+    "operationRevision",
+    "status"
+  ],
+  "additionalProperties": false
+}

@@ -1,83 +1,90 @@
+import org.gradle.testing.jacoco.tasks.JacocoCoverageVerification
+
 plugins {
-	kotlin("jvm") version "1.9.25"
-	kotlin("plugin.spring") version "1.9.25"
-	id("org.springframework.boot") version "3.4.5"
-	id("io.spring.dependency-management") version "1.1.7"
+    kotlin("jvm") version "2.2.21"
+    kotlin("plugin.spring") version "2.2.21"
+    id("org.springframework.boot") version "3.5.16"
+    id("io.spring.dependency-management") version "1.1.7"
+    jacoco
 }
 
 group = "com.vik"
-version = "0.0.1-SNAPSHOT"
+version = "0.1.0-SNAPSHOT"
 
-java {
-	toolchain {
-		languageVersion = JavaLanguageVersion.of(21)
-	}
-}
+repositories { mavenCentral() }
 
-configurations {
-	compileOnly {
-		extendsFrom(configurations.annotationProcessor.get())
-	}
-}
-
-repositories {
-	mavenCentral()
-}
-
-extra["springCloudVersion"] = "2024.0.1"
-
-dependencies {
-	implementation(platform("org.jetbrains.kotlin:kotlin-bom"))
-	implementation("org.jetbrains.kotlin:kotlin-stdlib")
-	implementation("org.springframework.boot:spring-boot-starter-actuator")
-	implementation("org.springframework.boot:spring-boot-starter-data-mongodb-reactive")
-	implementation("org.mongodb:mongodb-driver-kotlin-coroutine")
-	implementation("org.mongodb:bson-kotlinx:5.4.0")
-	implementation("org.springframework.boot:spring-boot-starter-webflux")
-	implementation("com.fasterxml.jackson.module:jackson-module-kotlin")
-	implementation("io.micrometer:micrometer-tracing-bridge-brave")
-	implementation("io.projectreactor.kotlin:reactor-kotlin-extensions")
-	implementation("org.jetbrains.kotlin:kotlin-reflect")
-	implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core")
-	implementation("org.jetbrains.kotlinx:kotlinx-coroutines-reactor")
-	implementation("org.springframework.cloud:spring-cloud-starter-gateway")
-	implementation("org.springdoc:springdoc-openapi-starter-webflux-ui:2.8.6")
-	implementation("org.springdoc:springdoc-openapi:2.7.0")
-	implementation("org.springframework.boot:spring-boot-starter-validation")
-	implementation("io.github.microutils:kotlin-logging:2.1.23")
-	implementation("org.springframework.boot:spring-boot-starter-security")
-	implementation("io.micrometer:micrometer-tracing-bridge-brave")
-	implementation("io.micrometer:micrometer-tracing")
-	implementation("io.micrometer:context-propagation")
-	implementation("org.springframework.boot:spring-boot-starter-cache")
-	implementation("com.github.ben-manes.caffeine:caffeine")
-
-	compileOnly("org.projectlombok:lombok")
-
-	annotationProcessor("org.springframework.boot:spring-boot-configuration-processor")
-	annotationProcessor("org.projectlombok:lombok")
-
-	testImplementation("org.springframework.boot:spring-boot-starter-test")
-	testImplementation("io.projectreactor:reactor-test")
-	testImplementation("org.jetbrains.kotlin:kotlin-test-junit5")
-	testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test")
-
-	testRuntimeOnly("org.junit.platform:junit-platform-launcher")
-}
-
-dependencyManagement {
-	imports {
-		mavenBom("org.springframework.cloud:spring-cloud-dependencies:${property("springCloudVersion")}")
-	}
-}
-
+dependencyLocking { lockAllConfigurations() }
 
 kotlin {
-	compilerOptions {
-		freeCompilerArgs.addAll("-Xjsr305=strict")
-	}
+    jvmToolchain(21)
+    compilerOptions {
+        freeCompilerArgs.add("-Xjsr305=strict")
+        allWarningsAsErrors.set(true)
+    }
 }
 
-tasks.withType<Test> {
-	useJUnitPlatform()
+dependencies {
+    implementation("org.springframework.boot:spring-boot-starter-web")
+    implementation("org.springframework.boot:spring-boot-starter-jdbc")
+    implementation("org.springframework.boot:spring-boot-starter-security")
+    implementation("org.springframework.boot:spring-boot-starter-oauth2-resource-server")
+    implementation("org.springframework.boot:spring-boot-starter-actuator")
+    implementation("com.fasterxml.jackson.module:jackson-module-kotlin")
+    implementation("org.jetbrains.kotlin:kotlin-reflect")
+    implementation("org.flywaydb:flyway-core")
+    runtimeOnly("org.flywaydb:flyway-database-postgresql")
+    runtimeOnly("org.postgresql:postgresql")
+
+    testImplementation("org.springframework.boot:spring-boot-starter-test")
+    testImplementation("org.springframework.security:spring-security-test")
+    testImplementation("org.testcontainers:junit-jupiter")
+    testImplementation("org.testcontainers:postgresql")
+    testRuntimeOnly("org.junit.platform:junit-platform-launcher")
+}
+
+jacoco { toolVersion = "0.8.13" }
+
+tasks.withType<Test>().configureEach {
+    useJUnitPlatform()
+    maxParallelForks = 1
+    testLogging { events("failed", "skipped") }
+    outputs.dir(layout.buildDirectory.dir("generated-contract-fixtures"))
+    finalizedBy(tasks.jacocoTestReport)
+}
+
+tasks.jacocoTestReport {
+    dependsOn(tasks.test)
+    reports {
+        xml.required.set(true)
+        html.required.set(true)
+    }
+}
+
+tasks.withType<JacocoCoverageVerification>().configureEach {
+    dependsOn(tasks.test)
+    violationRules {
+        rule {
+            limit { counter = "LINE"; minimum = "0.80".toBigDecimal() }
+            limit { counter = "BRANCH"; minimum = "0.80".toBigDecimal() }
+        }
+    }
+}
+
+tasks.register<Exec>("contractTest") {
+    group = "verification"
+    description = "Validate strict API/event schemas and positive/negative fixtures."
+    val python = providers.gradleProperty("contractPython").orElse(".venv/bin/python")
+    commandLine(python.get(), "-m", "unittest", "discover", "-s", "contracts/tests", "-v")
+}
+
+tasks.register<Exec>("producerContractTest") {
+    group = "verification"
+    description = "Validate actual persisted profile events against the published contract."
+    dependsOn(tasks.test)
+    val python = providers.gradleProperty("contractPython").orElse(".venv/bin/python")
+    commandLine(python.get(), "-m", "unittest", "discover", "-s", "contracts/producer-tests", "-v")
+}
+
+tasks.check {
+    dependsOn(tasks.jacocoTestCoverageVerification, "contractTest", "producerContractTest")
 }

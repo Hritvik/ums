@@ -1,0 +1,99 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ums.invalid/contracts/v1/deletion-batch-result.json",
+  "title": "Internal explicitly invoked due-deletion batch result",
+  "description": "Bounded local maintenance result. No HTTP route, scheduler, lease, downstream completion or public bearer cursor. BLOCKED is known state conflict; RETRYABLE is recognized transient database unavailability only. Unknown/integrity failures propagate instead of manufacturing an outcome. App/cutoff equality and keyset progress require runtime validation.",
+  "$defs": {
+    "app": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "issuerEnvironmentRef",
+        "appReference"
+      ],
+      "properties": {
+        "issuerEnvironmentRef": {
+          "$ref": "common.json#/$defs/uuid"
+        },
+        "appReference": {
+          "$ref": "common.json#/$defs/uuid"
+        }
+      }
+    },
+    "cursor": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "app",
+        "cutoff",
+        "afterDeadline",
+        "afterRequestReference"
+      ],
+      "properties": {
+        "app": {
+          "$ref": "#/$defs/app"
+        },
+        "cutoff": {
+          "$ref": "common.json#/$defs/timestamp"
+        },
+        "afterDeadline": {
+          "$ref": "common.json#/$defs/timestamp"
+        },
+        "afterRequestReference": {
+          "$ref": "common.json#/$defs/uuid"
+        }
+      }
+    }
+  },
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "app",
+    "cutoff",
+    "results",
+    "nextCursor"
+  ],
+  "properties": {
+    "app": {
+      "$ref": "#/$defs/app"
+    },
+    "cutoff": {
+      "$ref": "common.json#/$defs/timestamp"
+    },
+    "results": {
+      "type": "array",
+      "minItems": 0,
+      "maxItems": 100,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "requestReference",
+          "outcome"
+        ],
+        "properties": {
+          "requestReference": {
+            "$ref": "common.json#/$defs/uuid"
+          },
+          "outcome": {
+            "enum": [
+              "LOCAL_COMPLETED",
+              "BLOCKED",
+              "RETRYABLE"
+            ]
+          }
+        }
+      }
+    },
+    "nextCursor": {
+      "oneOf": [
+        {
+          "type": "null"
+        },
+        {
+          "$ref": "#/$defs/cursor"
+        }
+      ]
+    }
+  }
+}

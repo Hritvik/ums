@@ -1,0 +1,44 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ums.invalid/contracts/v1/profile-policy.json",
+  "type": "object",
+  "properties": {
+    "policyRevision": {
+      "$ref": "common.json#/$defs/version"
+    },
+    "requiredFields": {
+      "type": "array",
+      "items": {
+        "$ref": "common.json#/$defs/field"
+      },
+      "uniqueItems": true,
+      "maxItems": 4
+    },
+    "humanEditableFields": {
+      "type": "array",
+      "items": {
+        "$ref": "common.json#/$defs/field"
+      },
+      "uniqueItems": true,
+      "maxItems": 4
+    },
+    "supportedLocaleDataVersion": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64
+    },
+    "supportedTimezoneDataVersion": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64
+    }
+  },
+  "required": [
+    "policyRevision",
+    "requiredFields",
+    "humanEditableFields",
+    "supportedLocaleDataVersion",
+    "supportedTimezoneDataVersion"
+  ],
+  "additionalProperties": false
+}

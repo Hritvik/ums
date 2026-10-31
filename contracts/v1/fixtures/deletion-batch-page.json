@@ -1,0 +1,30 @@
+{
+  "app": {
+    "issuerEnvironmentRef": "c1c8540a-8268-4ba9-9029-a5ef73cacbd4",
+    "appReference": "c1c8540a-8268-4ba9-9029-a5ef73cacbd4"
+  },
+  "cutoff": "2026-10-25T00:00:00Z",
+  "results": [
+    {
+      "requestReference": "c1c8540a-8268-4ba9-9029-a5ef73cacbd4",
+      "outcome": "LOCAL_COMPLETED"
+    },
+    {
+      "requestReference": "c1c8540a-8268-4ba9-9029-a5ef73cacbd4",
+      "outcome": "BLOCKED"
+    },
+    {
+      "requestReference": "c1c8540a-8268-4ba9-9029-a5ef73cacbd4",
+      "outcome": "RETRYABLE"
+    }
+  ],
+  "nextCursor": {
+    "app": {
+      "issuerEnvironmentRef": "c1c8540a-8268-4ba9-9029-a5ef73cacbd4",
+      "appReference": "c1c8540a-8268-4ba9-9029-a5ef73cacbd4"
+    },
+    "cutoff": "2026-10-25T00:00:00Z",
+    "afterDeadline": "2026-10-25T00:00:00Z",
+    "afterRequestReference": "c1c8540a-8268-4ba9-9029-a5ef73cacbd4"
+  }
+}

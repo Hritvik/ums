@@ -1,0 +1,28 @@
+{
+  "scope": {
+    "issuerEnvironmentRef": "c1c8540a-8268-4ba9-9029-a5ef73cacbd4",
+    "appReference": "c1c8540a-8268-4ba9-9029-a5ef73cacbd4",
+    "subjectReference": "c1c8540a-8268-4ba9-9029-a5ef73cacbd4"
+  },
+  "bindingRevision": "9007199254740993",
+  "policyRevision": "1",
+  "lifecycle": "DELETION_PENDING",
+  "readiness": "PROFILE_REQUIRED",
+  "profileReference": "c1c8540a-8268-4ba9-9029-a5ef73cacbd4",
+  "generation": "1",
+  "profileRevision": "1",
+  "deletionCauses": {
+    "appOnly": {
+      "requestReference": "c1c8540a-8268-4ba9-9029-a5ef73cacbd4",
+      "sourceRevision": "1",
+      "acceptedAt": "2026-10-23T00:00:00Z",
+      "deadline": "2026-11-22T00:00:00Z"
+    },
+    "iamGlobal": {
+      "requestReference": "c1c8540a-8268-4ba9-9029-a5ef73cacbd4",
+      "sourceRevision": "1",
+      "acceptedAt": "2026-10-23T00:00:00Z",
+      "deadline": "2026-11-22T00:00:00Z"
+    }
+  }
+}

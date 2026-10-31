@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ums.invalid/contracts/v1/privacy-command.json",
+  "type": "object",
+  "properties": {
+    "expectedVersion": {
+      "$ref": "common.json#/$defs/version"
+    }
+  },
+  "required": [
+    "expectedVersion"
+  ],
+  "additionalProperties": false
+}

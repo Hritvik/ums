@@ -1,0 +1,184 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ums.invalid/contracts/v1/binding-state.json",
+  "type": "object",
+  "properties": {
+    "scope": {
+      "$ref": "common.json#/$defs/scope"
+    },
+    "bindingRevision": {
+      "$ref": "common.json#/$defs/version"
+    },
+    "policyRevision": {
+      "$ref": "common.json#/$defs/version"
+    },
+    "lifecycle": {
+      "$ref": "common.json#/$defs/lifecycle"
+    },
+    "readiness": {
+      "$ref": "common.json#/$defs/readiness"
+    },
+    "profileReference": {
+      "$ref": "common.json#/$defs/uuid"
+    },
+    "generation": {
+      "$ref": "common.json#/$defs/version"
+    },
+    "profileRevision": {
+      "$ref": "common.json#/$defs/version"
+    },
+    "deletionCauses": {
+      "type": "object",
+      "properties": {
+        "appOnly": {
+          "type": "object",
+          "properties": {
+            "requestReference": {
+              "$ref": "common.json#/$defs/uuid"
+            },
+            "sourceRevision": {
+              "$ref": "common.json#/$defs/version"
+            },
+            "acceptedAt": {
+              "$ref": "common.json#/$defs/timestamp"
+            },
+            "deadline": {
+              "$ref": "common.json#/$defs/timestamp"
+            }
+          },
+          "required": [
+            "requestReference",
+            "sourceRevision",
+            "acceptedAt",
+            "deadline"
+          ],
+          "additionalProperties": false
+        },
+        "iamGlobal": {
+          "type": "object",
+          "properties": {
+            "requestReference": {
+              "$ref": "common.json#/$defs/uuid"
+            },
+            "sourceRevision": {
+              "$ref": "common.json#/$defs/version"
+            },
+            "acceptedAt": {
+              "$ref": "common.json#/$defs/timestamp"
+            },
+            "deadline": {
+              "$ref": "common.json#/$defs/timestamp"
+            }
+          },
+          "required": [
+            "requestReference",
+            "sourceRevision",
+            "acceptedAt",
+            "deadline"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [],
+      "additionalProperties": false
+    }
+  },
+  "required": [
+    "scope",
+    "bindingRevision",
+    "policyRevision",
+    "lifecycle",
+    "readiness",
+    "deletionCauses"
+  ],
+  "additionalProperties": false,
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "lifecycle": {
+            "const": "ERASED"
+          }
+        }
+      },
+      "then": {
+        "not": {
+          "anyOf": [
+            {
+              "required": [
+                "profileReference"
+              ]
+            },
+            {
+              "required": [
+                "generation"
+              ]
+            },
+            {
+              "required": [
+                "profileRevision"
+              ]
+            }
+          ]
+        },
+        "properties": {
+          "readiness": {
+            "const": "PROFILE_REQUIRED"
+          },
+          "deletionCauses": {
+            "maxProperties": 0
+          }
+        }
+      },
+      "else": {
+        "required": [
+          "profileReference",
+          "generation",
+          "profileRevision"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "lifecycle": {
+            "const": "DELETION_PENDING"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "deletionCauses": {
+            "minProperties": 1
+          },
+          "readiness": {
+            "const": "PROFILE_REQUIRED"
+          }
+        }
+      },
+      "else": {
+        "properties": {
+          "deletionCauses": {
+            "maxProperties": 0
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "lifecycle": {
+            "const": "CLOSED"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "readiness": {
+            "const": "PROFILE_REQUIRED"
+          }
+        }
+      }
+    }
+  ]
+}

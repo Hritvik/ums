@@ -1,0 +1,25 @@
+name: Foundation checks
+on:
+  pull_request:
+  push:
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install isolated contract test dependencies
+        run: |
+          python -m venv .venv
+          .venv/bin/python -m pip install -r contracts/requirements-test.txt
+      - name: Verify contracts, PostgreSQL integration, and coverage
+        run: ./gradlew check bootJar --no-daemon --console=plain

@@ -1,0 +1,14 @@
+{
+  "policyRevision": "1",
+  "requiredFields": [
+    "displayName"
+  ],
+  "humanEditableFields": [
+    "displayName",
+    "avatarReference",
+    "displayLocale",
+    "displayTimezone"
+  ],
+  "supportedLocaleDataVersion": "fixture-1",
+  "supportedTimezoneDataVersion": "fixture-1"
+}

@@ -1,0 +1,9 @@
+{
+  "operationReference": "foo",
+  "operationRevision": "1",
+  "status": "PENDING",
+  "acceptedAt": "2026-10-24T00:00:00Z",
+  "deadline": "2026-11-23T00:00:00Z",
+  "cancellationEligible": true,
+  "bindingRevision": "3"
+}

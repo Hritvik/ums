@@ -1,0 +1,19 @@
+{
+  "eventId": "c1c8540a-8268-4ba9-9029-a5ef73cacbd4",
+  "schemaVersion": "1",
+  "producer": "ums",
+  "environment": "test",
+  "occurredAt": "2026-10-23T00:00:00Z",
+  "correlationId": "fixture-1",
+  "causationId": "c1c8540a-8268-4ba9-9029-a5ef73cacbd4",
+  "type": "ums.operation.export.v1",
+  "scope": {
+    "issuerEnvironmentRef": "c1c8540a-8268-4ba9-9029-a5ef73cacbd4",
+    "appReference": "c1c8540a-8268-4ba9-9029-a5ef73cacbd4",
+    "subjectReference": "c1c8540a-8268-4ba9-9029-a5ef73cacbd4"
+  },
+  "operationReference": "c1c8540a-8268-4ba9-9029-a5ef73cacbd4",
+  "operationRevision": "1",
+  "status": "LOCAL_COMPLETED",
+  "reason": "EXPORT"
+}

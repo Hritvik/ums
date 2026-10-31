@@ -1,0 +1,6 @@
+{
+  "readiness": "PROFILE_PROVISIONING",
+  "nextActions": [
+    "WAIT"
+  ]
+}

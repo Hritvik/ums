@@ -1,0 +1,347 @@
+[
+  {
+    "file": "patch-all-fields.json",
+    "schema": "profile-patch.json",
+    "valid": true
+  },
+  {
+    "file": "patch-clear.json",
+    "schema": "profile-patch.json",
+    "valid": true
+  },
+  {
+    "file": "patch-invalid-unknown.json",
+    "schema": "profile-patch.json",
+    "valid": false
+  },
+  {
+    "file": "patch-invalid-empty.json",
+    "schema": "profile-patch.json",
+    "valid": false
+  },
+  {
+    "file": "patch-invalid-control.json",
+    "schema": "profile-patch.json",
+    "valid": false
+  },
+  {
+    "file": "patch-invalid-bidi.json",
+    "schema": "profile-patch.json",
+    "valid": false
+  },
+  {
+    "file": "patch-invalid-long-name.json",
+    "schema": "profile-patch.json",
+    "valid": false
+  },
+  {
+    "file": "patch-invalid-url-avatar.json",
+    "schema": "profile-patch.json",
+    "valid": false
+  },
+  {
+    "file": "patch-invalid-unicode-locale.json",
+    "schema": "profile-patch.json",
+    "valid": false
+  },
+  {
+    "file": "patch-invalid-long-timezone.json",
+    "schema": "profile-patch.json",
+    "valid": false
+  },
+  {
+    "file": "version-invalid-numeric.json",
+    "schema": "profile-patch.json",
+    "valid": false
+  },
+  {
+    "file": "version-invalid-overflow.json",
+    "schema": "profile-patch.json",
+    "valid": false
+  },
+  {
+    "file": "version-invalid-leading-zero.json",
+    "schema": "profile-patch.json",
+    "valid": false
+  },
+  {
+    "file": "version-invalid-negative.json",
+    "schema": "profile-patch.json",
+    "valid": false
+  },
+  {
+    "file": "policy-default.json",
+    "schema": "profile-policy.json",
+    "valid": true
+  },
+  {
+    "file": "policy-strict.json",
+    "schema": "profile-policy.json",
+    "valid": true
+  },
+  {
+    "file": "policy-domain-field.json",
+    "schema": "profile-policy.json",
+    "valid": false
+  },
+  {
+    "file": "status-ready.json",
+    "schema": "profile-status.json",
+    "valid": true
+  },
+  {
+    "file": "status-incomplete.json",
+    "schema": "profile-status.json",
+    "valid": true
+  },
+  {
+    "file": "state-closed.json",
+    "schema": "binding-state.json",
+    "valid": true
+  },
+  {
+    "file": "state-independent-deletions.json",
+    "schema": "binding-state.json",
+    "valid": true
+  },
+  {
+    "file": "state-erased.json",
+    "schema": "binding-state.json",
+    "valid": true
+  },
+  {
+    "file": "state-erased-with-reference.json",
+    "schema": "binding-state.json",
+    "valid": false
+  },
+  {
+    "file": "state-pending-without-cause.json",
+    "schema": "binding-state.json",
+    "valid": false
+  },
+  {
+    "file": "display-explicit.json",
+    "schema": "profile-display.json",
+    "valid": true
+  },
+  {
+    "file": "display-generated_fallback.json",
+    "schema": "profile-display.json",
+    "valid": true
+  },
+  {
+    "file": "display-absent.json",
+    "schema": "profile-display.json",
+    "valid": true
+  },
+  {
+    "file": "state-event.json",
+    "schema": "profile-state-event.json",
+    "valid": true
+  },
+  {
+    "file": "event-personal-displayName.json",
+    "schema": "profile-state-event.json",
+    "valid": false
+  },
+  {
+    "file": "event-personal-avatarReference.json",
+    "schema": "profile-state-event.json",
+    "valid": false
+  },
+  {
+    "file": "event-personal-email.json",
+    "schema": "profile-state-event.json",
+    "valid": false
+  },
+  {
+    "file": "event-personal-humanIdentityId.json",
+    "schema": "profile-state-event.json",
+    "valid": false
+  },
+  {
+    "file": "event-personal-displayLocale.json",
+    "schema": "profile-state-event.json",
+    "valid": false
+  },
+  {
+    "file": "event-personal-displayTimezone.json",
+    "schema": "profile-state-event.json",
+    "valid": false
+  },
+  {
+    "file": "operation-event.json",
+    "schema": "operation-event.json",
+    "valid": true
+  },
+  {
+    "file": "scoped-snapshot.json",
+    "schema": "snapshot.json",
+    "valid": true
+  },
+  {
+    "file": "status-absent.json",
+    "schema": "profile-status.json",
+    "valid": true
+  },
+  {
+    "file": "status-provisioning.json",
+    "schema": "profile-status.json",
+    "valid": true
+  },
+  {
+    "file": "trailing-newline-version.json",
+    "schema": "profile-patch.json",
+    "valid": false
+  },
+  {
+    "file": "trailing-newline-displayName.json",
+    "schema": "profile-patch.json",
+    "valid": false
+  },
+  {
+    "file": "trailing-newline-avatarReference.json",
+    "schema": "profile-patch.json",
+    "valid": false
+  },
+  {
+    "file": "trailing-newline-displayLocale.json",
+    "schema": "profile-patch.json",
+    "valid": false
+  },
+  {
+    "file": "trailing-newline-displayTimezone.json",
+    "schema": "profile-patch.json",
+    "valid": false
+  },
+  {
+    "file": "deletion-status-pending.json",
+    "schema": "deletion-request-status.json",
+    "valid": true
+  },
+  {
+    "file": "deletion-status-expired-pending.json",
+    "schema": "deletion-request-status.json",
+    "valid": true
+  },
+  {
+    "file": "deletion-status-cancelled.json",
+    "schema": "deletion-request-status.json",
+    "valid": true
+  },
+  {
+    "file": "deletion-status-unknown-status.json",
+    "schema": "deletion-request-status.json",
+    "valid": false
+  },
+  {
+    "file": "deletion-status-pii.json",
+    "schema": "deletion-request-status.json",
+    "valid": false
+  },
+  {
+    "file": "deletion-status-numeric-revision.json",
+    "schema": "deletion-request-status.json",
+    "valid": false
+  },
+  {
+    "file": "deletion-status-overflow-revision.json",
+    "schema": "deletion-request-status.json",
+    "valid": false
+  },
+  {
+    "file": "deletion-status-bad-id.json",
+    "schema": "deletion-request-status.json",
+    "valid": false
+  },
+  {
+    "file": "deletion-status-bad-date.json",
+    "schema": "deletion-request-status.json",
+    "valid": false
+  },
+  {
+    "file": "deletion-status-cancelled-eligible.json",
+    "schema": "deletion-request-status.json",
+    "valid": false
+  },
+  {
+    "file": "deletion-status-missing-deadline.json",
+    "schema": "deletion-request-status.json",
+    "valid": false
+  },
+  {
+    "file": "deletion-status-missing-binding-revision.json",
+    "schema": "deletion-request-status.json",
+    "valid": false
+  },
+  {
+    "file": "deletion-status-local-completed.json",
+    "schema": "deletion-request-status.json",
+    "valid": true
+  },
+  {
+    "file": "deletion-status-local-completed-eligible.json",
+    "schema": "deletion-request-status.json",
+    "valid": false
+  },
+  {
+    "file": "deletion-status-false-downstream-ack.json",
+    "schema": "deletion-request-status.json",
+    "valid": false
+  },
+  {
+    "file": "deletion-status-completion-claims-downstream.json",
+    "schema": "deletion-request-status.json",
+    "valid": false
+  },
+  {
+    "file": "deletion-batch-completed.json",
+    "schema": "deletion-batch-result.json",
+    "valid": true
+  },
+  {
+    "file": "deletion-batch-empty.json",
+    "schema": "deletion-batch-result.json",
+    "valid": true
+  },
+  {
+    "file": "deletion-batch-page.json",
+    "schema": "deletion-batch-result.json",
+    "valid": true
+  },
+  {
+    "file": "deletion-batch-exception.json",
+    "schema": "deletion-batch-result.json",
+    "valid": false
+  },
+  {
+    "file": "deletion-batch-personal-result.json",
+    "schema": "deletion-batch-result.json",
+    "valid": false
+  },
+  {
+    "file": "deletion-batch-unknown-outcome.json",
+    "schema": "deletion-batch-result.json",
+    "valid": false
+  },
+  {
+    "file": "deletion-batch-oversized.json",
+    "schema": "deletion-batch-result.json",
+    "valid": false
+  },
+  {
+    "file": "deletion-batch-cursor-secret.json",
+    "schema": "deletion-batch-result.json",
+    "valid": false
+  },
+  {
+    "file": "deletion-batch-invalid-cutoff.json",
+    "schema": "deletion-batch-result.json",
+    "valid": false
+  },
+  {
+    "file": "deletion-batch-missing-cursor.json",
+    "schema": "deletion-batch-result.json",
+    "valid": false
+  }
+]

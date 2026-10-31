@@ -1,0 +1,6 @@
+{
+  "readiness": "PROFILE_REQUIRED",
+  "nextActions": [
+    "WAIT"
+  ]
+}

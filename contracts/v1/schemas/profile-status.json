@@ -1,0 +1,69 @@
+{
+  "$id": "https://ums.invalid/contracts/v1/profile-status.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "oneOf": [
+    {
+      "type": "object",
+      "properties": {
+        "state": {
+          "$ref": "binding-state.json"
+        },
+        "unmetFields": {
+          "type": "array",
+          "items": {
+            "$ref": "common.json#/$defs/field"
+          },
+          "uniqueItems": true,
+          "maxItems": 4
+        },
+        "nextActions": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "WAIT",
+              "COMPLETE_PROFILE",
+              "REQUEST_REACTIVATION",
+              "CANCEL_DELETION",
+              "CONTACT_SUPPORT"
+            ]
+          },
+          "uniqueItems": true,
+          "maxItems": 5
+        }
+      },
+      "required": [
+        "state",
+        "unmetFields",
+        "nextActions"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "readiness",
+        "nextActions"
+      ],
+      "properties": {
+        "readiness": {
+          "enum": [
+            "PROFILE_REQUIRED",
+            "PROFILE_PROVISIONING"
+          ]
+        },
+        "nextActions": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "WAIT",
+              "CONTACT_SUPPORT"
+            ]
+          },
+          "uniqueItems": true,
+          "maxItems": 2
+        }
+      }
+    }
+  ]
+}
