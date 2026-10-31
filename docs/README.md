@@ -13,7 +13,7 @@ identity/authentication; products retain their business data and permissions.
 - [Due-deletion batches](development/deletion-batch.md): Slice D3 bounded processing, continuation, and isolated failures.
 - [Local erasure finalization](development/profile-erasure.md): Slice D2 deadline processing, replay fences, and local-completion limits.
 - [App-only deletion](development/profile-deletion.md): Slice D1 requests, cancellation, restricted status, and remaining privacy gates.
-- [Closure and retention](development/profile-closure.md): Slice D4 app departure, the published 90-day deadline, and deletion independence.
+- [Closure and retention](development/profile-closure.md): Slice D4–D5 app departure, the published 90-day deadline, and deliberate reactivation.
 - [Local Dutch consumer journey](development/dutch-consumer-journey.md): simulated consumer evidence and the real integration handoff.
 - [IAM consumer preparation](development/iam-integration.md): Slice C provider evidence and remaining integration gates.
 - [Profile edits and display](development/profile-editing.md): Slice B field validation, readiness, retries, and protected reads.

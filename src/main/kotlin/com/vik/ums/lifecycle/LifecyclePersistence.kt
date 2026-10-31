@@ -30,6 +30,13 @@ internal class LifecyclePersistence(private val jdbc: JdbcTemplate) {
             Timestamp.from(closedAt), Timestamp.from(retainUntil),
             scope.issuerEnvironmentRef, scope.appReference, scope.subjectReference) == 1
 
+    /** Reopens a closed profile only; retention is cleared but closure history is retained. */
+    fun reactivate(scope: ProfileScope, readiness: String): Boolean =
+        jdbc.update("""update ums_profile_bindings set lifecycle = 'ACTIVE', readiness = ?,
+            binding_revision = binding_revision + 1, closure_at = null, closure_retain_until = null
+            where issuer_environment_ref = ? and app_reference = ? and subject_reference = ? and lifecycle = 'CLOSED'""",
+            readiness, scope.issuerEnvironmentRef, scope.appReference, scope.subjectReference) == 1
+
     /** Restriction already in force: record retention without changing lifecycle, revision, or readiness. */
     fun recordRetention(scope: ProfileScope, closedAt: Instant, retainUntil: Instant) {
         jdbc.update("""update ums_profile_bindings set closure_present = true, closure_at = ?, closure_retain_until = ?

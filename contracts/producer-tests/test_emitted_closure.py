@@ -48,6 +48,22 @@ class EmittedClosure(unittest.TestCase):
         self.assertIn('retentionDeadline', status)
         self.assertEqual(status['unmetFields'], [])
 
+    def test_persisted_reactivation_event(self):
+        event = self.artifact('reactivated-event.json', 'profile-state-event.json')
+        self.assertEqual(event['reason'], 'REACTIVATED')
+        state = event['state']
+        self.assertEqual(state['lifecycle'], 'ACTIVE')
+        self.assertEqual(state['readiness'], 'PROFILE_READY')
+        self.assertEqual(state['deletionCauses'], {})
+        for key in ['displayName', 'avatarReference', 'displayLocale', 'displayTimezone']:
+            self.assertNotIn(key, state)
+
+    def test_reactivated_status_reports_no_retention(self):
+        status = self.artifact('reactivated-status.json', 'profile-status.json')
+        self.assertEqual(status['state']['lifecycle'], 'ACTIVE')
+        self.assertEqual(status['nextActions'], [])
+        self.assertNotIn('retentionDeadline', status)
+
 
 if __name__ == '__main__':
     unittest.main()
