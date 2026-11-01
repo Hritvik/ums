@@ -1,6 +1,7 @@
 package com.vik.ums.lifecycle
 
 import com.fasterxml.jackson.databind.ObjectMapper
+import com.vik.ums.notices.NoticePersistence
 import com.vik.ums.profiles.AppProfilePolicy
 import com.vik.ums.profiles.Lifecycle
 import com.vik.ums.profiles.ProfileFieldsPersistence
@@ -58,6 +59,7 @@ class ProfileReactivationService(
         check(persistence.reactivate(fact.scope, readiness.name)) { "Profile is no longer closed" }
 
         val after = bindings.binding(fact.scope)!!
+        NoticePersistence(jdbc).suppress(fact.scope, now)
         persistence.recordEvidence(fact.scope, "REACTIVATED", after.bindingRevision.toLong(), now, null,
             now, fact.eventId, fact.correlationId)
         events.emit(after, "REACTIVATED", fact.eventId, fact.correlationId)

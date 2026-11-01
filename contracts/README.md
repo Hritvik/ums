@@ -22,6 +22,8 @@ After schema validation: validate app/actor/target/issuer/environment/audience a
 
 Only `ums.profile.state-changed.v1` advances a binding checkpoint. Operation request/notice/export/content-cleanup facts have their own operation IDs/revisions and cannot update that checkpoint. No duplicate per-purpose profile streams are published. Status values distinguish accepted, local completion, delivery acknowledgement and failure; no acknowledgement proves downstream product erasure. The baseline omits export download capabilities entirely so no URL or bearer secret can enter events.
 
+`notice-intent.json` publishes one minimized intent per retention-notice window (`CLOSURE_EXPIRY_14_DAY`, `CLOSURE_EXPIRY_7_DAY`) with the profile scope, the published retention deadline, a deterministic `dedupeIdentity` bound to the closure instance, and a delivery `state`. It carries no contact detail, channel, wording or message body: UMS owns no contact data and cannot claim a notice was delivered. A late-observed closure skips a window whose start has passed rather than shifting it, and a profile closed again after reactivation produces fresh intents because the identity includes the new deadline.
+
 ## Actor contract
 
 | Actor | Allowed purpose | Excluded |

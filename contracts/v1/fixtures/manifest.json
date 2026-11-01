@@ -348,5 +348,10 @@
     "file": "status-closed.json",
     "schema": "profile-status.json",
     "valid": true
+  },
+  {
+    "file": "notice-intent.json",
+    "schema": "notice-intent.json",
+    "valid": true
   }
 ]

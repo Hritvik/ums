@@ -1,0 +1,70 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ums.invalid/contracts/v1/notice-intent.json",
+  "type": "object",
+  "properties": {
+    "noticeReference": {
+      "$ref": "common.json#/$defs/uuid"
+    },
+    "schemaVersion": {
+      "const": "1"
+    },
+    "type": {
+      "const": "ums.profile.notice-intent.v1"
+    },
+    "producer": {
+      "const": "ums"
+    },
+    "environment": {
+      "type": "string",
+      "pattern": "^[a-z0-9-]{1,32}(?![\\s\\S])"
+    },
+    "occurredAt": {
+      "$ref": "common.json#/$defs/timestamp"
+    },
+    "correlationId": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9._:-]{1,128}(?![\\s\\S])"
+    },
+    "scope": {
+      "$ref": "common.json#/$defs/scope"
+    },
+    "noticeClass": {
+      "enum": [
+        "CLOSURE_EXPIRY_14_DAY",
+        "CLOSURE_EXPIRY_7_DAY"
+      ]
+    },
+    "deadline": {
+      "$ref": "common.json#/$defs/timestamp"
+    },
+    "dedupeIdentity": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "state": {
+      "enum": [
+        "QUEUED",
+        "HANDED_OFF",
+        "ACKNOWLEDGED",
+        "FAILED",
+        "SUPPRESSED"
+      ]
+    }
+  },
+  "required": [
+    "noticeReference",
+    "schemaVersion",
+    "type",
+    "producer",
+    "environment",
+    "occurredAt",
+    "correlationId",
+    "scope",
+    "noticeClass",
+    "deadline",
+    "dedupeIdentity",
+    "state"
+  ],
+  "additionalProperties": false
+}

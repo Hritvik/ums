@@ -1,6 +1,7 @@
 package com.vik.ums.lifecycle
 
 import com.fasterxml.jackson.databind.ObjectMapper
+import com.vik.ums.notices.NoticePersistence
 import com.vik.ums.profiles.Lifecycle
 import com.vik.ums.profiles.ProfilePersistence
 import com.vik.ums.profiles.ProfileStateEvents
@@ -49,6 +50,7 @@ class ProfileExpiryService(
         check(persistence.expireErased(fact.scope, revision)) { "Profile is no longer a closed generation" }
         persistence.recordExpiryFence(fact.scope, current.profileReference!!, current.generation!!.toLong(),
             recorded.closedAt, revision, now)
+        NoticePersistence(jdbc).suppress(fact.scope, now)
         persistence.recordEvidence(fact.scope, "EXPIRED", revision, now, null, now, fact.eventId, fact.correlationId)
 
         val after = bindings.binding(fact.scope)!!

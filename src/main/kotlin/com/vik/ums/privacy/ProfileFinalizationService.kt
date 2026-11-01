@@ -1,6 +1,7 @@
 package com.vik.ums.privacy
 
 import com.fasterxml.jackson.databind.ObjectMapper
+import com.vik.ums.notices.NoticePersistence
 import com.vik.ums.profiles.*
 import org.springframework.jdbc.core.JdbcTemplate
 import org.springframework.transaction.support.TransactionTemplate
@@ -48,6 +49,7 @@ class ProfileFinalizationService(
                 where issuer_environment_ref = ? and app_reference = ? and subject_reference = ?""", Boolean::class.java,
                 scope.issuerEnvironmentRef, scope.appReference, scope.subjectReference) == true, FinalizationBlockReason.CONTENT_AUTHORITY_UNAVAILABLE)
             erase(scope, request, before)
+            NoticePersistence(jdbc).suppress(scope, now)
             val after = bindings.binding(scope)!!
             audit(authority, request, after, now, correlationId)
             events.emit(after, "ERASED", reference, correlationId)
@@ -63,7 +65,8 @@ class ProfileFinalizationService(
         jdbc.update("""delete from ums_profile_deletion_causes where issuer_environment_ref = ? and app_reference = ? and subject_reference = ?""",
             scope.issuerEnvironmentRef, scope.appReference, scope.subjectReference)
         jdbc.update("""update ums_profile_bindings set lifecycle='ERASED', readiness='PROFILE_REQUIRED', profile_reference=null,
-            generation=null, profile_revision=null, closure_present=false, display_name=null, avatar_reference=null, display_locale=null,
+            generation=null, profile_revision=null, closure_present=false, closure_at=null, closure_retain_until=null,
+            display_name=null, avatar_reference=null, display_locale=null,
             display_timezone=null, binding_revision=?, completed_deletion_request_reference=?
             where issuer_environment_ref=? and app_reference=? and subject_reference=?""",
             revision, request.reference, scope.issuerEnvironmentRef, scope.appReference, scope.subjectReference)
