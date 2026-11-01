@@ -41,6 +41,7 @@ mapping is never repaired here.
 
 - **Deletion, not export.** Export artifacts, display batches, and policy reconciliation are
   still unimplemented; every other route stays denied.
+- **Internal routes not built.** Display-read batches, policy reconciliation, and the snapshot read require a registered workload token profile that IAM has not published. Building them against human tokens would invent an authority model.
 - **Contract correction needed.** The OpenAPI declares the status read on the collection
   (`GET /deletion-requests`) without a parameter, while the status DTO requires an operation
   reference. The implementation uses `/deletion-requests/{requestId}`; the contract should be

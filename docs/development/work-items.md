@@ -207,10 +207,11 @@ Five provider inputs do not exist yet and are carried as named gaps rather than 
 
 **Summary.** The service currently exposes no business routes, so no product can use it. This item turns the already-tested internal services into the eight operations the published contract describes, with honest status codes and bounded bodies.
 
-**Status.** Planned — not started.
+**Status.** Green for the user-facing surface. Internal projection/configuration routes and export remain gated, not built.
 
 **Work to be done.**
-- Implement the declared profile read and update operations, the status read, the display-read batch, the deletion request and cancellation commands, and the policy reconciliation operation against the existing application services.
+- Implement the declared profile read and update operations, the status read, the deletion request and cancellation commands, and the restricted status read against the existing application services.
+  - The internal display-read batch, policy reconciliation, and snapshot routes stay gated: they require a registered workload token profile that IAM has not published.
   - Map each operation to the caller context from the authority item, including field allowlists and purpose.
 - Enforce request discipline at the edge: decoded body limits, duplicate-key rejection, unknown fields, expected version, idempotency key, and safe non-enumerating failures.
 - Return `200` with a profile-required status rather than an error when a profile simply is not ready, and use the contract's accepted or conflict shapes for mutations.
@@ -225,13 +226,16 @@ Five provider inputs do not exist yet and are carried as named gaps rather than 
 - **Repo doc** — [profile-editing.md](profile-editing.md) and [profile-deletion.md](profile-deletion.md) for the service behaviors being exposed.
 
 **Acceptance criteria.**
-- [ ] All eight declared operations exist and validate their requests against the published schemas, rejecting unknown fields, duplicate keys, and oversized bodies.
+- [ ] Every user-facing declared operation exists and validates its request against the published schemas, rejecting unknown fields, duplicate keys, and oversized bodies. The internal workload routes are a separate gate because no workload token profile is published.
+- [ ] Recent-Strong privacy authority is derived from `acr` and `auth_time`, never accepted from the caller, and weaker evidence is denied.
 - [ ] A foreign-app, wrong-subject, or wrong-purpose call is denied with the contract's non-enumerating failure, and a denied call changes no state.
 - [ ] A pending-deletion caller can read restricted status and cancel before the deadline while ordinary profile reads, edits, and display reads stay blocked.
 - [ ] Status returns `200` with a profile-required outcome for an incomplete profile, and mutation conflicts return the documented conflict code.
 - [ ] Responses and logs contain no personal values, tokens, or cross-app references in the covered paths.
 
-**Depends on.** `W-5.`
+**Depends on.** `W-5`.
+
+**Remaining gates.** Internal display-read/policy/snapshot routes need an accepted workload token profile and registration; export needs its own artifact contract and storage, tracked as W-9.
 
 ## W-8 — Publish and consume the Dutch Member-association contract
 
