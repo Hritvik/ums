@@ -6,6 +6,7 @@ import com.fasterxml.jackson.databind.DeserializationFeature
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.vik.ums.foundation.CallerAuthorityInterceptor
 import com.vik.ums.foundation.SafeErrors
+import com.vik.ums.foundation.StrictIds
 import com.vik.ums.iam.Assurance
 import com.vik.ums.iam.CallerActorReferences
 import com.vik.ums.iam.CallerContext
@@ -18,6 +19,7 @@ import jakarta.servlet.http.HttpServletRequest
 import jakarta.servlet.http.HttpServletResponse
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.GetMapping
+import org.springframework.web.bind.annotation.RequestParam
 import org.springframework.web.bind.annotation.PathVariable
 import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.RestController
@@ -51,19 +53,35 @@ class ProfilePrivacyController(
     @PostMapping("/api/v1/profile/deletion-requests/{requestId}/cancellation")
     fun cancel(@PathVariable requestId: String, request: HttpServletRequest,
                response: HttpServletResponse): ResponseEntity<Any> {
-        val reference = runCatching { UUID.fromString(requestId) }.getOrNull()
+        val reference = StrictIds.uuid(requestId)
             ?: return failure(response, 404, "unavailable", "Deletion request is unavailable",
                 SafeErrors.correlation(response, request))
         return command(request, response, PrivacyPurpose.CANCEL_DELETION, reference)
     }
 
+    /** The published collection read carries the operation reference as a query parameter. */
+    @GetMapping("/api/v1/profile/deletion-requests")
+    fun statusByQuery(@RequestParam("operationReference", required = false) reference: String?,
+                      request: HttpServletRequest, response: HttpServletResponse): ResponseEntity<Any> {
+        val parsed = StrictIds.uuid(reference)
+            ?: return failure(response, 400, "malformed_input", "A valid operationReference is required",
+                SafeErrors.correlation(response, request))
+        return statusOf(parsed, request, response)
+    }
+
     @GetMapping("/api/v1/profile/deletion-requests/{requestId}")
     fun status(@PathVariable requestId: String, request: HttpServletRequest,
                response: HttpServletResponse): ResponseEntity<Any> {
+        val parsed = StrictIds.uuid(requestId)
+            ?: return failure(response, 404, "unavailable", "Deletion request is unavailable",
+                SafeErrors.correlation(response, request))
+        return statusOf(parsed, request, response)
+    }
+
+    private fun statusOf(reference: UUID, request: HttpServletRequest,
+                         response: HttpServletResponse): ResponseEntity<Any> {
         response.setHeader("Cache-Control", "no-store")
         val correlation = SafeErrors.correlation(response, request)
-        val reference = runCatching { UUID.fromString(requestId) }.getOrNull()
-            ?: return failure(response, 404, "unavailable", "Deletion request is unavailable", correlation)
         val caller = CallerAuthorityInterceptor.caller(request)
             ?: return failure(response, 401, "unauthenticated", "Authentication is required", correlation)
         val scope = scopes.resolve(caller)
@@ -86,7 +104,7 @@ class ProfilePrivacyController(
         if (request.contentType?.startsWith("application/json") != true) {
             return failure(response, 400, "malformed_input", "A JSON body is required", correlation)
         }
-        val key = runCatching { UUID.fromString(request.getHeader("Idempotency-Key")) }.getOrNull()
+        val key = StrictIds.uuid(request.getHeader("Idempotency-Key"))
             ?: return failure(response, 400, "malformed_input", "A valid Idempotency-Key is required", correlation)
         val body = request.inputStream.readNBytes(MAX_BODY + 1)
         if (body.size > MAX_BODY) {
@@ -113,7 +131,7 @@ class ProfilePrivacyController(
         } catch (reused: IllegalArgumentException) {
             if (reused.message?.contains("idempotency") == true) {
                 failure(response, 409, "idempotency_key_reused", "The idempotency key was reused", correlation)
-            } else failure(response, 404, "unavailable", "Profile is unavailable", correlation)
+            } else failure(response, 403, "forbidden", "Recent strong authentication is required", correlation)
         } catch (conflict: IllegalStateException) {
             val message = conflict.message.orEmpty()
             when {
@@ -131,7 +149,9 @@ class ProfilePrivacyController(
         if (caller.assurance != Assurance.STRONG) return null
         val authenticatedAt = caller.authenticatedAt ?: return null
         val now = clock.instant()
-        if (authenticatedAt.isAfter(now) || Duration.between(authenticatedAt, now) > maximumStrongAge) return null
+        // Keep a margin so a re-sample inside the service cannot flip an accepted command to denied.
+        val acceptable = maximumStrongAge.minusSeconds(1).coerceAtLeast(Duration.ofSeconds(1))
+        if (authenticatedAt.isAfter(now) || Duration.between(authenticatedAt, now) > acceptable) return null
         return TrustedPrivacyAuthority(scope, CallerActorReferences.of(caller), purpose,
             authenticatedAt, strong = true, expiresAt = authenticatedAt.plus(maximumStrongAge))
     }

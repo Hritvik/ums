@@ -133,7 +133,8 @@ class GlobalDeletionTest {
             .isEqualTo("DELETION_PENDING")
         assertThat(jdbc.queryForObject("select count(*) from ums_profile_deletion_causes where cause_type = 'IAM_GLOBAL'",
             Int::class.java)).isEqualTo(1)
-        assertThat(state.state).isNull()
+        assertThat(state.state?.lifecycle).isEqualTo(Lifecycle.DELETION_PENDING)
+        assertThat(state.nextActions).containsExactly("CONTACT_SUPPORT")
     }
 
     @Test fun `cancelling the only global cause restores the closed profile and re-arms notices`() {

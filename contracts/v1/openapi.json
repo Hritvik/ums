@@ -9,7 +9,7 @@
     "/api/v1/profile": {
       "get": {
         "summary": "Read own app profile",
-        "description": "Contract proposal only; endpoint is not implemented. Exact app, target, actor, lifecycle and current authority checks are mandatory.",
+        "description": "Implemented. Exact app, target, actor, lifecycle and current authority checks are mandatory.",
         "security": [
           {
             "umsBearer": []
@@ -129,7 +129,7 @@
       },
       "patch": {
         "summary": "Update permitted own profile fields",
-        "description": "Contract proposal only; endpoint is not implemented. Exact app, target, actor, lifecycle and current authority checks are mandatory.",
+        "description": "Implemented. Exact app, target, actor, lifecycle and current authority checks are mandatory.",
         "security": [
           {
             "umsBearer": []
@@ -272,7 +272,7 @@
     "/api/v1/profile/status": {
       "get": {
         "summary": "Read restricted-safe own profile status",
-        "description": "Contract proposal only; endpoint is not implemented. Exact app, target, actor, lifecycle and current authority checks are mandatory.",
+        "description": "Implemented. Exact app, target, actor, lifecycle and current authority checks are mandatory.",
         "security": [
           {
             "umsBearer": []
@@ -394,7 +394,7 @@
     "/api/v1/profile/deletion-requests": {
       "post": {
         "summary": "Request app-only deletion with recent Strong authority",
-        "description": "Contract proposal only; endpoint is not implemented. Exact app, target, actor, lifecycle and current authority checks are mandatory.",
+        "description": "Implemented. Exact app, target, actor, lifecycle and current authority checks are mandatory.",
         "security": [
           {
             "umsBearer": []
@@ -535,7 +535,7 @@
       },
       "get": {
         "summary": "Inspect one own privacy operation",
-        "description": "Contract proposal only; endpoint is not implemented. Exact app, target, actor, lifecycle and current authority checks are mandatory.",
+        "description": "Implemented. Exact app, target, actor, lifecycle and current authority checks are mandatory.",
         "security": [
           {
             "umsBearer": []
@@ -668,7 +668,7 @@
     "/api/v1/profile/deletion-requests/{requestId}/cancellation": {
       "post": {
         "summary": "Cancel own deletion before deadline with recent Strong authority",
-        "description": "Contract proposal only; endpoint is not implemented. Exact app, target, actor, lifecycle and current authority checks are mandatory.",
+        "description": "Implemented. Exact app, target, actor, lifecycle and current authority checks are mandatory.",
         "security": [
           {
             "umsBearer": []

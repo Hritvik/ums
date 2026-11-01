@@ -34,6 +34,13 @@ class SecurityConfiguration {
     }
 
     @Bean
+    fun safeAuthenticationEntryPoint(mapper: ObjectMapper): SafeAuthenticationEntryPoint =
+        SafeAuthenticationEntryPoint(mapper)
+
+    @Bean
+    fun safeAccessDeniedHandler(mapper: ObjectMapper): SafeAccessDeniedHandler = SafeAccessDeniedHandler(mapper)
+
+    @Bean
     fun callerRegistrations(environment: Environment): CallerRegistrations =
         CallerRegistrations.parse(environment.getProperty("ums.security.registrations"))
 
@@ -50,7 +57,8 @@ class SecurityConfiguration {
         ProfileScopeResolver(jdbc, UUID.fromString(environment.getRequiredProperty("ums.iam.issuer-environment-ref")))
 
     @Bean
-    fun securityFilterChain(http: HttpSecurity): SecurityFilterChain = http
+    fun securityFilterChain(http: HttpSecurity, entryPoint: SafeAuthenticationEntryPoint,
+                            deniedHandler: SafeAccessDeniedHandler): SecurityFilterChain = http
         // There is no browser session or cookie authentication in this resource server.
         .csrf { it.disable() }
         .sessionManagement { it.sessionCreationPolicy(SessionCreationPolicy.STATELESS) }
@@ -60,11 +68,19 @@ class SecurityConfiguration {
                 .requestMatchers(HttpMethod.GET, "/api/v1/profile").authenticated()
                 .requestMatchers(HttpMethod.PATCH, "/api/v1/profile").authenticated()
                 .requestMatchers(HttpMethod.POST, "/api/v1/profile/deletion-requests").authenticated()
+                .requestMatchers(HttpMethod.GET, "/api/v1/profile/deletion-requests").authenticated()
                 .requestMatchers(HttpMethod.GET, "/api/v1/profile/deletion-requests/*").authenticated()
                 .requestMatchers(HttpMethod.POST, "/api/v1/profile/deletion-requests/*/cancellation").authenticated()
                 .requestMatchers(HttpMethod.GET, "/api/v1/profile/status").authenticated()
                 .anyRequest().denyAll()
         }
-        .oauth2ResourceServer { it.jwt {} }
+        .oauth2ResourceServer {
+            // The resource server installs its own entry point; override it so the envelope holds.
+            it.authenticationEntryPoint(entryPoint).accessDeniedHandler(deniedHandler)
+            it.jwt {}
+        }
+        .exceptionHandling {
+            it.authenticationEntryPoint(entryPoint).accessDeniedHandler(deniedHandler)
+        }
         .build()
 }

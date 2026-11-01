@@ -44,12 +44,20 @@ class ProfileProvisioningService(
             state = state, unmetFields = emptyList(), nextActions = listOf("REQUEST_REACTIVATION"),
             retentionDeadline = persistence.closureDeadline(scope)?.toString(),
         )
+        if (state.lifecycle == Lifecycle.DELETION_PENDING) return@execute ProfileStatus(
+            state = state, unmetFields = emptyList(),
+            nextActions = if (state.deletionCauses.appOnly != null) listOf("CANCEL_DELETION")
+            else listOf("CONTACT_SUPPORT"),
+            retentionDeadline = persistence.closureDeadline(scope)?.toString(),
+        )
         if (state.lifecycle != Lifecycle.ACTIVE) return@execute ProfileStatus(
             nextActions = listOf("CONTACT_SUPPORT"), readiness = Readiness.PROFILE_REQUIRED,
             retentionDeadline = persistence.closureDeadline(scope)?.toString(),
         )
+        // A missing policy for an existing binding is a deployment defect, not "no profile".
+        val required = policy?.requiredFields ?: throw IllegalStateException("Profile capability is unavailable")
         val present = fields.fields(scope).keys
-        val unmet = policy!!.requiredFields.filter { it !in present }.sortedBy { it.ordinal }
+        val unmet = required.filter { it !in present }.sortedBy { it.ordinal }
         ProfileStatus(state, unmet, if (unmet.isEmpty()) emptyList() else listOf("COMPLETE_PROFILE"))
     }!!
 

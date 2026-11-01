@@ -42,7 +42,8 @@ class ProfileStatusHttpTest {
     private val appReference = UUID.randomUUID()
     private val subjectReference = UUID.randomUUID()
     private val registrationJson = """[{"appId":"dutch-development","clientId":"dutch-mobile",
-        "audience":"https://ums.example.test","allowedScopes":["profile:read"],"requiresDpop":true}]"""
+        "audience":"https://ums.example.test","allowedScopes":["profile:read"],"requiresDpop":true},
+        {"appId":"other-app","clientId":"other-client","audience":"https://ums.example.test","allowedScopes":["profile:read"],"requiresDpop":true}]"""
     private lateinit var jdbc: JdbcTemplate
     private lateinit var provisioning: ProfileProvisioningService
     private lateinit var mockMvc: MockMvc
@@ -92,16 +93,18 @@ class ProfileStatusHttpTest {
     @AfterEach fun clear() = SecurityContextHolder.clearContext()
 
     private fun authenticate(acr: String = "urn:distracted:aal2",
-                             authenticatedAt: Instant? = Instant.now().minusSeconds(10)) {
+                             authenticatedAt: Instant? = Instant.now().minusSeconds(10),
+                             appId: String = "dutch-development",
+                             clientId: String = "dutch-mobile") {
         val jwt = Jwt.withTokenValue("t").header("alg", "ES256").header("typ", "at+jwt")
             .header("kid", "dutch-key-01")
             .subject("aps_0123456789abcdefghijkL").issuer("https://iam.example.test")
             .audience(listOf("https://ums.example.test")).issuedAt(Instant.now())
             .expiresAt(Instant.now().plusSeconds(60))
-            .claim("jti", "jti_0123456789abcdef").claim("client_id", "dutch-mobile")
+            .claim("jti", "jti_0123456789abcdef").claim("client_id", clientId)
             .claim("token_profile", "human_access").claim("token_version", 1)
             .claim("subject_kind", "app_subject").claim("scope", "profile:read")
-            .claim("app_id", "dutch-development").claim("security_version", 1)
+            .claim("app_id", appId).claim("security_version", 1)
             .claim("acr", acr).claim("amr", listOf("passkey"))
             .apply { authenticatedAt?.let { claim("auth_time", it.epochSecond) } }
             .claim("cnf", mapOf("jkt" to "0123456789abcdefghijklmnopqrstuvwxyzABCDEFG"))
@@ -115,8 +118,8 @@ class ProfileStatusHttpTest {
         mockMvc.perform(get("/api/v1/profile/status"))
             .andExpect(status().isOk)
             .andExpect(header().string("Cache-Control", "no-store"))
-            .andExpect(jsonPath("$.state.lifecycle").value("ACTIVE"))
-            .andExpect(jsonPath("$.nextActions").isArray)
+            .andExpect(jsonPath("$.data.state.lifecycle").value("ACTIVE"))
+            .andExpect(jsonPath("$.data.nextActions").isArray)
     }
 
     @Test fun `an unmapped caller gets the same unavailable answer as a hidden target`() {
@@ -351,6 +354,54 @@ class ProfileStatusHttpTest {
         mockMvc.perform(patch("/api/v1/profile").contentType(MediaType.APPLICATION_JSON)
             .header("Idempotency-Key", uuid()).content("x".repeat(17 * 1024)))
             .andExpect(status().isBadRequest)
+    }
+
+    @Test fun `a token from another application cannot see this profile`() {
+        val otherApp = UUID.randomUUID()
+        jdbc.update("""insert into ums_iam_app_mappings (issuer_environment_ref, app_registration_id, app_reference)
+            values (?, 'other-app', ?)""", issuerEnvironmentRef, otherApp)
+        authenticate(appId = "other-app", clientId = "other-client")
+
+        mockMvc.perform(get("/api/v1/profile"))
+            .andExpect(status().isNotFound)
+            .andExpect(jsonPath("$.error.code").value("unavailable"))
+    }
+
+    @Test fun `the published collection status read accepts an operation reference`() {
+        authenticate()
+        mockMvc.perform(post("/api/v1/profile/deletion-requests").contentType(MediaType.APPLICATION_JSON)
+            .header("Idempotency-Key", uuid()).content("""{"expectedVersion":1}"""))
+            .andExpect(status().isAccepted)
+        val reference = jdbc.queryForObject("select request_reference from ums_profile_deletion_requests",
+            UUID::class.java)!!
+
+        mockMvc.perform(get("/api/v1/profile/deletion-requests").param("operationReference", reference.toString()))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.data.status").value("PENDING"))
+        mockMvc.perform(get("/api/v1/profile/deletion-requests"))
+            .andExpect(status().isBadRequest)
+    }
+
+    @Test fun `a pending deletion blocks ordinary reads and edits`() {
+        authenticate()
+        mockMvc.perform(post("/api/v1/profile/deletion-requests").contentType(MediaType.APPLICATION_JSON)
+            .header("Idempotency-Key", uuid()).content("""{"expectedVersion":1}"""))
+            .andExpect(status().isAccepted)
+
+        mockMvc.perform(get("/api/v1/profile")).andExpect(status().isNotFound)
+        mockMvc.perform(patch("/api/v1/profile").contentType(MediaType.APPLICATION_JSON)
+            .header("Idempotency-Key", uuid()).content(patchBody("Ada")))
+            .andExpect(status().isNotFound)
+        mockMvc.perform(post("/api/v1/profile/deletion-requests").contentType(MediaType.APPLICATION_JSON)
+            .header("Idempotency-Key", uuid()).content("""{"expectedVersion":2}"""))
+            .andExpect(status().isConflict)
+    }
+
+    @Test fun `the strong-authentication window is exact`() {
+        authenticate(authenticatedAt = Instant.now().minus(Duration.ofMinutes(5)))
+        mockMvc.perform(post("/api/v1/profile/deletion-requests").contentType(MediaType.APPLICATION_JSON)
+            .header("Idempotency-Key", uuid()).content("""{"expectedVersion":1}"""))
+            .andExpect(status().isForbidden)
     }
 
     @Test fun `an unauthenticated request is refused before the handler`() {

@@ -27,8 +27,12 @@ class ProfileStatusController(
             ?: return failure(response, 401, "unauthenticated", "Authentication is required", correlation)
         val scope = scopes.resolve(caller)
             ?: return failure(response, 404, "unavailable", "Profile is unavailable", correlation)
-        val status = provisioning.status(AppScope(scope.issuerEnvironmentRef, scope.appReference), scope)
-        return ResponseEntity.ok(status)
+        val status = try {
+            provisioning.status(AppScope(scope.issuerEnvironmentRef, scope.appReference), scope)
+        } catch (unavailable: IllegalStateException) {
+            return failure(response, 404, "unavailable", "Profile is unavailable", correlation)
+        }
+        return ResponseEntity.ok(mapOf("data" to status))
     }
 
     private fun failure(response: HttpServletResponse, status: Int, code: String, message: String,

@@ -123,8 +123,10 @@ class UserManagementServiceApplicationTests {
         val response = http.exchange("/api/v1/profile", HttpMethod.GET, HttpEntity<Void>(headers), String::class.java)
         // An implemented business route is the only permitted one; every other route stays
         // closed to an authenticated caller. denyAll answers 401 in this configuration.
+        // An implemented route is the only permitted one; unmapped routes stay closed. This
+        // filter configuration answers denyAll with the safe unauthenticated envelope.
         assertThat(response.statusCode.is4xxClientError).isTrue()
-        assertThat(response.body ?: "").doesNotContain("app_id")
+        assertThat(response.body ?: "").contains("error").contains("correlationId").doesNotContain("app_id")
     }
 
     @Test

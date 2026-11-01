@@ -7,6 +7,7 @@ import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.vik.ums.foundation.CallerAuthorityInterceptor
 import com.vik.ums.foundation.SafeErrors
+import com.vik.ums.foundation.StrictIds
 import com.vik.ums.iam.CallerActorReferences
 import jakarta.servlet.http.HttpServletRequest
 import jakarta.servlet.http.HttpServletResponse
@@ -41,7 +42,7 @@ class ProfilePatchController(
         if (request.contentType?.startsWith("application/json") != true) {
             return failure(response, 400, "malformed_input", "A JSON body is required", correlation)
         }
-        val idempotencyKey = runCatching { UUID.fromString(request.getHeader("Idempotency-Key")) }.getOrNull()
+        val idempotencyKey = StrictIds.uuid(request.getHeader("Idempotency-Key"))
             ?: return failure(response, 400, "malformed_input", "A valid Idempotency-Key is required", correlation)
         val body = request.inputStream.readNBytes(MAX_BODY + 1)
         if (body.size > MAX_BODY) {
@@ -64,6 +65,9 @@ class ProfilePatchController(
         } catch (conflict: ProfileVersionConflictException) {
             return failure(response, 409, "version_conflict", "The profile changed", correlation)
         } catch (invalid: IllegalArgumentException) {
+            if (invalid.message?.contains("capability", ignoreCase = true) == true) {
+                return failure(response, 404, "unavailable", "Profile is unavailable", correlation)
+            }
             return failure(response, 422, "invalid_field", "A supplied field value is not allowed", correlation)
         } catch (unavailable: IllegalStateException) {
             return failure(response, 404, "unavailable", "Profile is unavailable", correlation)

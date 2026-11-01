@@ -6,11 +6,13 @@ privacy authorization, strict bounded input, idempotency, and non-enumerating an
 
 ## Routes
 
-`GET /api/v1/profile/status` returns the caller's own profile status.
+`GET /api/v1/profile/status` returns `{data: …}` with the caller's own profile status,
+including the restricted view and the next action for a closed or pending profile.
 `GET /api/v1/profile` returns the caller's own display envelope (`{data: …}`) and refuses
 an unavailable or restricted profile with the same `404` as a hidden target.
 
-`POST /api/v1/profile/deletion-requests` requests app-only deletion and
+The published collection read is `GET /api/v1/profile/deletion-requests?operationReference=…`;
+the `/{requestId}` variant is kept as an alias. `POST /api/v1/profile/deletion-requests` requests app-only deletion and
 `POST /api/v1/profile/deletion-requests/{id}/cancellation` cancels it, both with the same
 bounded JSON body (`expectedVersion` only) and UUID `Idempotency-Key`. Both require recent
 Strong authority derived from the token: `acr` must map to strong authentication and
@@ -43,9 +45,8 @@ mapping is never repaired here.
   still unimplemented; every other route stays denied.
 - **Internal routes not built.** Display-read batches, policy reconciliation, and the snapshot read require a registered workload token profile that IAM has not published. Building them against human tokens would invent an authority model.
 - **Contract correction needed.** The OpenAPI declares the status read on the collection
-  (`GET /deletion-requests`) without a parameter, while the status DTO requires an operation
-  reference. The implementation uses `/deletion-requests/{requestId}`; the contract should be
-  corrected to match rather than the implementation bending to a gap.
+  without a parameter while the status DTO requires an operation reference. The implementation
+  accepts `?operationReference=…` and the contract should declare it.
 - **No registration administration.** Registrations are configuration files, not an API.
 - **No rate limiting.** Bounds exist per request, but no per-app/actor quota or backpressure
   is enforced yet.
@@ -67,8 +68,13 @@ refusal for an unmapped caller, an idempotent update and its replay, distinct ve
 idempotency conflicts, malformed bodies, an invalid field value, and restricted or unmapped
 profiles.
 
-At this commit `check bootJar` passes with 211 JVM tests, 7 contract tests, 22 producer
-checks, 97.0% line and 80.1% branch coverage. The application context test proves the shipped route is the
+Every response, including framework-level 401/403 and unhandled 500/503, uses the contract's
+safe error envelope with a correlation id; a database outage answers `503 temporarily_unavailable`
+rather than leaking a stack trace. Recent-Strong authority keeps a one-second margin so the
+service's own clock re-sample cannot flip an accepted command to denied.
+
+At this commit `check bootJar` passes with 215 JVM tests, 7 contract tests, 22 producer
+checks, 96.6% line and 80.1% branch coverage. The application context test proves the shipped route is the
 only permitted business route.
 
 RED evidence: the first wiring attempt registered the authority filter twice and returned
