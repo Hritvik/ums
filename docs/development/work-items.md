@@ -178,7 +178,7 @@ Five provider inputs do not exist yet and are carried as named gaps rather than 
 
 **Summary.** Profiles must be created, closed, and deleted from IAM facts that actually arrive over the network, and duplicates, gaps, and out-of-order delivery must not corrupt state. Today only a local adapter call exists. This item adds the authenticated entry point and the repair behavior around it.
 
-**Status.** Planned — not started.
+**Status.** Green — ingestion and snapshot repair implemented; the authenticated transport is a named gate, not built.
 
 **Work to be done.**
 - Add a private, authenticated inbound endpoint that accepts only the registered IAM event types for the registered app, and rejects unknown fields, duplicate keys, oversized bodies, and trailing content.
@@ -195,10 +195,10 @@ Five provider inputs do not exist yet and are carried as named gaps rather than 
 - **Repo doc** — [iam-integration.md](iam-integration.md) for the mapping, ownership, and gating rules already implemented locally.
 
 **Acceptance criteria.**
-- [ ] A valid provider fact arriving over the authenticated endpoint creates exactly one profile and one outbox event for the scoped app and subject.
+- [ ] A valid provider fact delivered through the trusted producer seam creates exactly one profile and one outbox event for the scoped app and subject. The authenticated transport that produces that seam is a separate gate, because IAM has published no consumer-ingestion contract.
 - [ ] Duplicate delivery changes nothing, a version gap returns reconciliation instead of provisioning, and a poisoned payload is quarantined without blocking later valid facts.
 - [ ] Requests with a foreign app, source, environment, schema version, or aggregate coordinate are rejected before any durable write.
-- [ ] Snapshot repair converges a divergent binding and cannot restore an erased profile or clear a deletion cause.
+- [ ] Snapshot repair advances a lagging ordering checkpoint under the application lock, records reconciled evidence, never creates or restores a profile, never clears a cause, and reports an omitted subject on a truncated page as indeterminate.
 - [ ] Automated tests cover duplicate, gap, poison, wrong-app, and repair-convergence paths against disposable PostgreSQL.
 
 **Depends on.** `W-4, W-5.`

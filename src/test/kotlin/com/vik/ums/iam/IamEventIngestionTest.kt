@@ -84,7 +84,7 @@ class IamEventIngestionTest {
 
         assertThat(jdbc.queryForObject("select count(*) from ums_profile_bindings", Long::class.java)).isZero()
         assertThat(jdbc.queryForList("select failure_class from ums_iam_ingestion_quarantine", String::class.java))
-            .containsOnly("SCHEMA_INVALID")
+            .containsOnly("SCHEMA_INVALID", "APPLICATION_BINDING_MISMATCH")
         assertThat(ingestion.openQuarantineCount()).isEqualTo(3)
     }
 
@@ -114,6 +114,35 @@ class IamEventIngestionTest {
         assertThat(ingestion.openQuarantineCount()).isZero()
         assertThat(ingestion.oldestOpenReceivedAt()).isNull()
         assertThatThrownBy { ingestion.resolve(reference) }.isInstanceOf(IllegalArgumentException::class.java)
+    }
+
+    @Test fun `authorization rejects are classified apart from poison payloads`() {
+        assertThat(ingestion.ingest(request(event(), application = "midas-development")).outcome)
+            .isEqualTo(IngestionOutcome.QUARANTINED)
+        val midas = event().replace("dutch-development", "midas-development")
+        assertThat(ingestion.ingest(request(midas, application = "midas-development")).outcome)
+            .isEqualTo(IngestionOutcome.QUARANTINED)
+        assertThat(ingestion.ingest(request("""{"a":1,"a":1}""")).outcome)
+            .isEqualTo(IngestionOutcome.QUARANTINED)
+
+        assertThat(jdbc.queryForList("select failure_class from ums_iam_ingestion_quarantine order by received_at",
+            String::class.java))
+            .containsExactly("APPLICATION_BINDING_MISMATCH", "APPLICATION_NOT_REGISTERED", "SCHEMA_INVALID")
+    }
+
+    @Test fun `stale restricted and not-adopted outcomes are distinct`() {
+        assertThat(ingestion.ingest(request(event())).outcome).isEqualTo(IngestionOutcome.APPLIED)
+        assertThat(ingestion.ingest(request(event(id = "evt_other00000000000"))).outcome)
+            .isEqualTo(IngestionOutcome.STALE)
+
+        jdbc.update("update ums_profile_bindings set lifecycle = 'CLOSED', readiness = 'PROFILE_REQUIRED'")
+        assertThat(ingestion.ingest(request(event(revision = 2, id = "evt_rev2000000000000"))).outcome)
+            .isEqualTo(IngestionOutcome.RESTRICTED)
+
+        jdbc.update("update ums_profile_bindings set lifecycle = 'ACTIVE'")
+        jdbc.update("update ums_profile_policies set policy = jsonb_set(policy::jsonb, '{adopted}', 'false')")
+        assertThat(ingestion.ingest(request(event(revision = 3, id = "evt_rev3000000000000"))).outcome)
+            .isEqualTo(IngestionOutcome.NOT_ADOPTED)
     }
 
     @Test fun `an empty payload is rejected at the trust boundary`() {

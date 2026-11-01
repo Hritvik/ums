@@ -64,8 +64,12 @@ class IamEventIngestionService(
         val json = decode(request.body) ?: return quarantine(request, "INVALID_ENCODING")
         return try {
             IngestionResult(adapter.consume(json, request.applicationId).outcome.toIngestion())
-        } catch (denied: IllegalArgumentException) {
-            // Strict parsing and registration checks reject before any durable write.
+        } catch (unregistered: UnregisteredIamApplicationException) {
+            quarantine(request, "APPLICATION_NOT_REGISTERED")
+        } catch (mismatch: IamApplicationMismatchException) {
+            quarantine(request, "APPLICATION_BINDING_MISMATCH")
+        } catch (malformed: IllegalArgumentException) {
+            // Strict parsing rejects before any durable write.
             quarantine(request, "SCHEMA_INVALID")
         }
     }

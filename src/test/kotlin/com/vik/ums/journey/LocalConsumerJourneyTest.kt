@@ -53,7 +53,7 @@ class LocalConsumerJourneyTest {
     @Test fun `strict profile journey keeps Dutch member identity and Ledger authority product-owned`() {
         val consumer = SimulatedDutchConsumer(app, "test")
         assertThat(consumer.state()).isEqualTo("WAIT")
-        val provisioned = adapter.consume(input())
+        val provisioned = adapter.consume(input(), "dutch-development")
         val binding = requireNotNull(provisioned.state)
         val scope = binding.scope
         val profileReference = requireNotNull(binding.profileReference)
@@ -68,7 +68,7 @@ class LocalConsumerJourneyTest {
         val readyEvent = outbox(2)
         assertThat(consumer.deliver(readyEvent)).isEqualTo("APPLIED")
         assertThat(consumer.deliver(readyEvent)).isEqualTo("DUPLICATE")
-        assertThat(adapter.consume(input()).outcome).isEqualTo(ProvisioningOutcome.DUPLICATE)
+        assertThat(adapter.consume(input(), "dutch-development").outcome).isEqualTo(ProvisioningOutcome.DUPLICATE)
         assertThat(consumer.memberReference()).isEqualTo(member)
         assertThat(consumer.state()).isEqualTo("READY")
         assertThat(consumer.canUseLedger()).isFalse()
@@ -92,7 +92,7 @@ class LocalConsumerJourneyTest {
     }
 
     @Test fun `outbox gaps invalidate previously ready projection until missing delivery and explicit retry`() {
-        val scope = adapter.consume(input()).state!!.scope
+        val scope = adapter.consume(input(), "dutch-development").state!!.scope
         val authority = TrustedHumanAuthority(scope, UUID.randomUUID(), HumanAction.entries.toSet())
         val consumer = SimulatedDutchConsumer(app, "test")
         consumer.deliver(outbox(1))
@@ -116,7 +116,7 @@ class LocalConsumerJourneyTest {
     }
 
     @Test fun `wrong application and metadata collision negatives never fabricate Member authority`() {
-        adapter.consume(input())
+        adapter.consume(input(), "dutch-development")
         val actual = outbox(1)
         val foreign = SimulatedDutchConsumer(app.copy(appReference = UUID.randomUUID()), "test")
         assertThat(foreign.deliver(actual)).isEqualTo("UNAVAILABLE")
@@ -143,24 +143,24 @@ class LocalConsumerJourneyTest {
         assertThat(consumer.state()).isEqualTo("WAIT")
         jdbc.execute("alter table ums_event_outbox add constraint journey_outbox_failure check (stream_revision <> 1)")
         try {
-            assertThatThrownBy { adapter.consume(input()) }.isInstanceOf(RuntimeException::class.java)
+            assertThatThrownBy { adapter.consume(input(), "dutch-development") }.isInstanceOf(RuntimeException::class.java)
             assertThat(jdbc.queryForObject("select count(*) from ums_profile_bindings", Long::class.java)).isZero()
             assertThat(jdbc.queryForObject("select count(*) from ums_event_outbox", Long::class.java)).isZero()
             assertThat(consumer.state()).isEqualTo("WAIT")
         } finally { jdbc.execute("alter table ums_event_outbox drop constraint journey_outbox_failure") }
-        assertThat(adapter.consume(input()).outcome).isEqualTo(ProvisioningOutcome.PROVISIONED)
+        assertThat(adapter.consume(input(), "dutch-development").outcome).isEqualTo(ProvisioningOutcome.PROVISIONED)
         assertThat(consumer.state()).isEqualTo("WAIT") // Committed outbox is not downstream delivery.
         assertThat(consumer.deliver(outbox(1))).isEqualTo("APPLIED")
         assertThat(consumer.state()).isEqualTo("COMPLETE_PROFILE")
     }
 
     @Test fun `first gap pins subject before another same-app subject can contaminate stream`() {
-        val scopeA = adapter.consume(input()).state!!.scope
+        val scopeA = adapter.consume(input(), "dutch-development").state!!.scope
         editing.patch(TrustedHumanAuthority(scopeA, UUID.randomUUID(), HumanAction.entries.toSet()), patch(1, "A"))
         val eventA2 = outbox(2)
         val scopeB = adapter.consume(input().replace("evt_0123456789abcdef", "evt_second0000000000")
             .replace("act_0123456789abcdef", "act_second0000000000")
-            .replace("aps_0123456789abcdefghijkL", "aps_second0000000000000000")).state!!.scope
+            .replace("aps_0123456789abcdefghijkL", "aps_second0000000000000000"), "dutch-development").state!!.scope
         val eventB1 = jdbc.queryForObject("""select payload::text from ums_event_outbox
             where stream_id = ? and stream_revision = 1""", String::class.java,
             "${scopeB.issuerEnvironmentRef}:${scopeB.appReference}:${scopeB.subjectReference}")!!

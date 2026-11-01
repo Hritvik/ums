@@ -45,8 +45,8 @@ class IamSnapshotRepairTest {
         ProfilePolicyRegistry(jdbc, tx, mapper).register(AppProfilePolicy(app, true, 1, emptySet(), emptySet(), "l1", "t1"))
         val adapter = IamOnboardingAdapter(jdbc, tx, ProfileProvisioningService(jdbc, tx, mapper, "test"),
             source, mapOf("dutch-development" to app))
-        adapter.consume(event())
-        repair = IamSnapshotRepairService(jdbc, source, registeredProducer = "iam")
+        adapter.consume(event(), "dutch-development")
+        repair = IamSnapshotRepairService(jdbc, tx, source, registeredProducer = "iam")
     }
 
     private fun request(body: String, subject: String = SUBJECT, producer: String = "iam",
@@ -67,7 +67,7 @@ class IamSnapshotRepairTest {
     @Test fun `a newer snapshot version advances the checkpoint without new profile state`() {
         val result = repair.repair(request(snapshot(2)))
 
-        assertThat(result.outcome).isEqualTo(SnapshotRepairOutcome.CONVERGED)
+        assertThat(result.outcome).isEqualTo(SnapshotRepairOutcome.CHECKPOINT_CONVERGED)
         assertThat(result.checkpoint).isEqualTo(2)
         assertThat(checkpoint()).isEqualTo(2)
         assertThat(jdbc.queryForObject("select binding_revision from ums_profile_bindings", Long::class.java))
@@ -112,8 +112,6 @@ class IamSnapshotRepairTest {
         assertThat(repair.repair(request("{not json")).outcome).isEqualTo(SnapshotRepairOutcome.REJECTED)
         assertThat(repair.repair(request(snapshot(2, application = "midas-development"))).outcome)
             .isEqualTo(SnapshotRepairOutcome.REJECTED)
-        assertThat(repair.repair(request(snapshot(2, hasMore = true))).outcome)
-            .isEqualTo(SnapshotRepairOutcome.REJECTED)
         assertThat(repair.repair(request(snapshot(2).replace("\"hasMore\":false", "\"extra\":1,\"hasMore\":false")))
             .outcome).isEqualTo(SnapshotRepairOutcome.REJECTED)
         assertThat(repair.repair(request(snapshot(2), producer = "other")).outcome)
@@ -153,7 +151,7 @@ class IamSnapshotRepairTest {
 
     @Test fun `an optional cursor does not affect a complete page`() {
         val body = snapshot(2).replace("\"hasMore\":false", "\"nextCursor\":\"cursor-1\",\"hasMore\":false")
-        assertThat(repair.repair(request(body)).outcome).isEqualTo(SnapshotRepairOutcome.CONVERGED)
+        assertThat(repair.repair(request(body)).outcome).isEqualTo(SnapshotRepairOutcome.CHECKPOINT_CONVERGED)
     }
 
     @Test fun `structurally invalid pages are rejected`() {
@@ -173,6 +171,29 @@ class IamSnapshotRepairTest {
             assertThat(repair.repair(request(body)).outcome).describedAs(body).isEqualTo(SnapshotRepairOutcome.REJECTED)
         }
         assertThat(checkpoint()).isEqualTo(1)
+    }
+
+    @Test fun `a truncated page repairs a present subject but cannot conclude absence`() {
+        assertThat(repair.repair(request(snapshot(2, hasMore = true))).outcome)
+            .isEqualTo(SnapshotRepairOutcome.CHECKPOINT_CONVERGED)
+        val other = "aps_9999999999999999999999"
+        // The page is truncated and does not contain the requested subject: absence is not evidence.
+        assertThat(repair.repair(request(snapshot(2, hasMore = true), subject = other)).outcome)
+            .isEqualTo(SnapshotRepairOutcome.PAGE_INCOMPLETE)
+    }
+
+    @Test fun `a mapped subject with no local binding is never created`() {
+        jdbc.update("delete from ums_profile_bindings")
+
+        assertThat(repair.repair(request(snapshot(2))).outcome).isEqualTo(SnapshotRepairOutcome.NO_LOCAL_BINDING)
+        assertThat(jdbc.queryForObject("select count(*) from ums_profile_bindings", Int::class.java)).isZero()
+    }
+
+    @Test fun `an unregistered application is rejected even with a matching page`() {
+        assertThat(repair.repair(request(snapshot(2, application = "midas-development"),
+            application = "midas-development")).outcome).isEqualTo(SnapshotRepairOutcome.REJECTED)
+        assertThat(repair.repair(request(snapshot(2).replace("\"hasMore\":false",
+            "\"nextCursor\":5,\"hasMore\":false"))).outcome).isEqualTo(SnapshotRepairOutcome.REJECTED)
     }
 
     private fun event(revision: Long = 1): String = """
