@@ -27,7 +27,7 @@ internal class ProfileFieldsPersistence(private val jdbc: JdbcTemplate) {
         jdbc.query("""select input_fingerprint, profile_reference, applied_revision from ums_profile_patch_receipts
             where issuer_environment_ref = ? and app_reference = ? and subject_reference = ? and actor_reference = ?
             and operation = 'PROFILE_PATCH' and idempotency_key = ?""", { rs, _ ->
-            require(rs.getString(1) == fingerprint) { "Idempotency key was reused with different input" }
+            if (rs.getString(1) != fingerprint) throw ProfileIdempotencyConflictException()
             PatchOutcome(rs.getObject(2, UUID::class.java), rs.getLong(3).toString())
         }, authority.scope.issuerEnvironmentRef, authority.scope.appReference, authority.scope.subjectReference,
             authority.actorReference, command.idempotencyKey).singleOrNull()

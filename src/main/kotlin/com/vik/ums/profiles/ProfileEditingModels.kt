@@ -52,6 +52,10 @@ class ProfileCatalogs(
     }
 }
 
+/** Typed conflicts so the HTTP edge can answer 409 without matching message text. */
+class ProfileVersionConflictException : IllegalStateException("Profile version conflict")
+class ProfileIdempotencyConflictException : IllegalArgumentException("Idempotency key was reused")
+
 data class PatchOutcome(val profileReference: UUID, val appliedRevision: String)
 data class ProfileDisplay(val profileReference: UUID, val profileRevision: String,
                           val fields: Map<String, String>, val displayNameSource: String)

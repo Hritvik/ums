@@ -58,6 +58,7 @@ class SecurityConfiguration {
         .authorizeHttpRequests {
             it.requestMatchers(HttpMethod.GET, "/actuator/health").permitAll()
                 .requestMatchers(HttpMethod.GET, "/api/v1/profile").authenticated()
+                .requestMatchers(HttpMethod.PATCH, "/api/v1/profile").authenticated()
                 .requestMatchers(HttpMethod.GET, "/api/v1/profile/status").authenticated()
                 .anyRequest().denyAll()
         }

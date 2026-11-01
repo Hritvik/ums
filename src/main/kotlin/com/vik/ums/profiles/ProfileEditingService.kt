@@ -30,7 +30,7 @@ class ProfileEditingService(
         val fingerprint = fingerprint(command)
         val receipt = fields.receipt(authority, command, fingerprint)
         if (receipt != null) return@execute receipt
-        check(before.profileRevision!!.toLong() == command.expectedVersion) { "Profile version conflict" }
+        if (before.profileRevision!!.toLong() != command.expectedVersion) throw ProfileVersionConflictException()
         val oldFields = fields.fields(authority.scope)
         val newFields = (oldFields + changes).filterValues { it != null }.mapValues { it.value!! }
         val after = if (newFields == oldFields) before else {

@@ -18,9 +18,11 @@ import org.springframework.security.oauth2.jwt.Jwt
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get
+import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.header
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
+import org.springframework.http.MediaType
 import org.springframework.test.web.servlet.setup.MockMvcBuilders
 import org.springframework.transaction.support.TransactionTemplate
 import org.testcontainers.containers.PostgreSQLContainer
@@ -54,7 +56,8 @@ class ProfileStatusHttpTest {
             ums_event_outbox, ums_profile_bindings, ums_input_checkpoints, ums_profile_policies""")
         val tx = TransactionTemplate(DataSourceTransactionManager(ds))
         val app = AppScope(issuerEnvironmentRef, appReference)
-        ProfilePolicyRegistry(jdbc, tx, mapper).register(AppProfilePolicy(app, true, 1, emptySet(), emptySet(), "l1", "t1"))
+        ProfilePolicyRegistry(jdbc, tx, mapper).register(
+            AppProfilePolicy(app, true, 1, emptySet(), ProfileField.entries.toSet(), "l1", "t1"))
         provisioning = ProfileProvisioningService(jdbc, tx, mapper, "test")
         provisioning.provision(TrustedOnboardingFact(ProfileScope(issuerEnvironmentRef, appReference, subjectReference),
             "iam", UUID.randomUUID(), "entry", 1, "http"))
@@ -75,6 +78,7 @@ class ProfileStatusHttpTest {
         mockMvc = MockMvcBuilders.standaloneSetup(
             ProfileStatusController(provisioning, scopeResolver, mapper),
             ProfileController(editing, scopeResolver, mapper),
+            ProfilePatchController(editing, provisioning, scopeResolver, mapper),
         )
             .addInterceptors(CallerAuthorityInterceptor(resolver, mapper))
             .build()
@@ -137,6 +141,95 @@ class ProfileStatusHttpTest {
             .andExpect(status().isNotFound)
             .andExpect(jsonPath("$.error.code").value("unavailable"))
     }
+
+    private fun patchBody(name: String?, version: Long = 1): String =
+        """{"expectedVersion":$version,"changes":{"displayName":${if (name == null) "null" else "\"$name\""}}}"""
+
+    @Test fun `a targeted patch updates the display and replays safely`() {
+        authenticate()
+        val key = UUID.randomUUID()
+        val body = patchBody("Ada")
+
+        mockMvc.perform(patch("/api/v1/profile").contentType(MediaType.APPLICATION_JSON)
+            .header("Idempotency-Key", key).content(body))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.data.profileRevision").value("2"))
+            .andExpect(jsonPath("$.data.fields.displayName").value("Ada"))
+
+        mockMvc.perform(patch("/api/v1/profile").contentType(MediaType.APPLICATION_JSON)
+            .header("Idempotency-Key", key).content(body))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.data.profileRevision").value("2"))
+
+        assertThat(jdbc.queryForObject("select profile_revision from ums_profile_bindings", Long::class.java))
+            .isEqualTo(2)
+    }
+
+    @Test fun `version and idempotency conflicts are distinct`() {
+        authenticate()
+        val key = UUID.randomUUID()
+        mockMvc.perform(patch("/api/v1/profile").contentType(MediaType.APPLICATION_JSON)
+            .header("Idempotency-Key", key).content(patchBody("Ada")))
+            .andExpect(status().isOk)
+
+        mockMvc.perform(patch("/api/v1/profile").contentType(MediaType.APPLICATION_JSON)
+            .header("Idempotency-Key", uuid()).content(patchBody("Grace", version = 9)))
+            .andExpect(status().isConflict)
+            .andExpect(jsonPath("$.error.code").value("version_conflict"))
+
+        mockMvc.perform(patch("/api/v1/profile").contentType(MediaType.APPLICATION_JSON)
+            .header("Idempotency-Key", key).content(patchBody("Grace")))
+            .andExpect(status().isConflict)
+            .andExpect(jsonPath("$.error.code").value("idempotency_key_reused"))
+    }
+
+    @Test fun `malformed bodies are refused before any state change`() {
+        authenticate()
+        val cases = listOf(
+            """{"expectedVersion":1,"changes":{"unknownField":"x"}}""",
+            """{"expectedVersion":1,"expectedVersion":1,"changes":{"displayName":"Ada"}}""",
+            """{"expectedVersion":1,"changes":{}}""",
+            """{"expectedVersion":1,"changes":{"displayName":"Ada"}} trailing""",
+        )
+        cases.forEach { body ->
+            mockMvc.perform(patch("/api/v1/profile").contentType(MediaType.APPLICATION_JSON)
+                .header("Idempotency-Key", uuid()).content(body))
+                .andExpect(status().isBadRequest)
+                .andExpect(jsonPath("$.error.code").value("malformed_input"))
+        }
+        mockMvc.perform(patch("/api/v1/profile").contentType(MediaType.APPLICATION_JSON).content(patchBody("Ada")))
+            .andExpect(status().isBadRequest)
+        mockMvc.perform(patch("/api/v1/profile").contentType(MediaType.TEXT_PLAIN)
+            .header("Idempotency-Key", uuid()).content(patchBody("Ada")))
+            .andExpect(status().isBadRequest)
+        assertThat(jdbc.queryForObject("select profile_revision from ums_profile_bindings", Long::class.java)).isEqualTo(1)
+    }
+
+    @Test fun `an invalid field value is a semantic rejection`() {
+        authenticate()
+
+        mockMvc.perform(patch("/api/v1/profile").contentType(MediaType.APPLICATION_JSON)
+            .header("Idempotency-Key", uuid()).content(patchBody("Ada\u202Eevil")))
+            .andExpect(status().isUnprocessableEntity)
+            .andExpect(jsonPath("$.error.code").value("invalid_field"))
+    }
+
+    @Test fun `a restricted or unmapped profile is unavailable to a patch`() {
+        authenticate()
+        jdbc.update("update ums_profile_bindings set lifecycle = 'CLOSED', readiness = 'PROFILE_REQUIRED'")
+        mockMvc.perform(patch("/api/v1/profile").contentType(MediaType.APPLICATION_JSON)
+            .header("Idempotency-Key", uuid()).content(patchBody("Ada")))
+            .andExpect(status().isNotFound)
+            .andExpect(jsonPath("$.error.code").value("unavailable"))
+
+        jdbc.update("update ums_profile_bindings set lifecycle = 'ACTIVE'")
+        jdbc.update("delete from ums_iam_app_mappings")
+        mockMvc.perform(patch("/api/v1/profile").contentType(MediaType.APPLICATION_JSON)
+            .header("Idempotency-Key", uuid()).content(patchBody("Ada")))
+            .andExpect(status().isNotFound)
+    }
+
+    private fun uuid(): String = UUID.randomUUID().toString()
 
     @Test fun `an unauthenticated request is refused before the handler`() {
         SecurityContextHolder.getContext().authentication =
