@@ -57,6 +57,7 @@ class UserManagementServiceApplicationTests {
             registry.add("ums.profile.timezone-version") { "t1" }
             registry.add("ums.profile.locales") { "en" }
             registry.add("ums.profile.timezones") { "UTC" }
+            registry.add("ums.profile.privacy.max-strong-age-seconds") { "300" }
             registry.add("ums.profile.receipt-key") { "YWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWE=" }
             registry.add("ums.iam.issuer-environment-ref") { "6f1d4a2c-3b5e-4c7d-8a9b-0c1d2e3f4a5b" }
             registry.add("ums.security.registrations") {

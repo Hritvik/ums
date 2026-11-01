@@ -59,6 +59,9 @@ class SecurityConfiguration {
             it.requestMatchers(HttpMethod.GET, "/actuator/health").permitAll()
                 .requestMatchers(HttpMethod.GET, "/api/v1/profile").authenticated()
                 .requestMatchers(HttpMethod.PATCH, "/api/v1/profile").authenticated()
+                .requestMatchers(HttpMethod.POST, "/api/v1/profile/deletion-requests").authenticated()
+                .requestMatchers(HttpMethod.GET, "/api/v1/profile/deletion-requests/*").authenticated()
+                .requestMatchers(HttpMethod.POST, "/api/v1/profile/deletion-requests/*/cancellation").authenticated()
                 .requestMatchers(HttpMethod.GET, "/api/v1/profile/status").authenticated()
                 .anyRequest().denyAll()
         }

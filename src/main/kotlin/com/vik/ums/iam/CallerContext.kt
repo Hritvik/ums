@@ -1,5 +1,7 @@
 package com.vik.ums.iam
 
+import java.time.Instant
+
 /**
  * A reviewed caller registration. The tuple rules come from the pinned IAM conformance
  * requirements: issuer, app_id, client_id, single audience, allowed scopes, and DPoP binding.
@@ -48,6 +50,7 @@ data class CallerContext(
     val authenticationMethods: List<String>,
     val scopes: Set<String>,
     val tokenId: String,
+    val authenticatedAt: Instant?,
 )
 
 /** Safe denial: a stable code only, never a claim value or token content. */

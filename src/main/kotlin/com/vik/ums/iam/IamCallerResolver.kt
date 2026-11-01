@@ -66,7 +66,7 @@ class IamCallerResolver(
             string(jwt, "acr") ?: deny(CallerDenial.MALFORMED_CLAIM)
         } else null
         return CallerContext(appId, subject, clientId, assurance(acr), securityVersion, acr,
-            authenticationMethods(jwt), scopes, tokenId = string(jwt, "jti")!!)
+            authenticationMethods(jwt), scopes, tokenId = string(jwt, "jti")!!, authenticatedAt = authTime)
     }
 
     private fun requireHeader(jwt: Jwt) {
@@ -117,6 +117,7 @@ class IamCallerResolver(
 
     private fun publishedInstant(jwt: Jwt, name: String): Instant? {
         if (!jwt.claims.containsKey(name)) return null
+        (jwt.claims[name] as? Instant)?.let { return it }
         val seconds = integer(jwt, name) ?: deny(CallerDenial.MALFORMED_CLAIM)
         return runCatching { Instant.ofEpochSecond(seconds) }.getOrNull() ?: deny(CallerDenial.MALFORMED_CLAIM)
     }

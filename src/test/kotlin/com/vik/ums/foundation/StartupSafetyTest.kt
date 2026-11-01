@@ -16,6 +16,7 @@ class StartupSafetyTest {
         "ums.profile.timezone-version" to "t1",
         "ums.profile.locales" to "en",
         "ums.profile.timezones" to "UTC",
+        "ums.profile.privacy.max-strong-age-seconds" to "300",
         "ums.profile.receipt-key" to "YWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWE=",
         "ums.iam.issuer-environment-ref" to "6f1d4a2c-3b5e-4c7d-8a9b-0c1d2e3f4a5b",
         "ums.security.registrations" to

@@ -32,6 +32,9 @@ class StartupSafetyConfiguration(environment: Environment) {
             .decode(required(environment, "ums.profile.receipt-key")) }.getOrNull()?.size?.let { it >= 32 } == true) {
             "ums.profile.receipt-key must be a base64 key of at least 32 bytes"
         }
+        require(required(environment, "ums.profile.privacy.max-strong-age-seconds").toLongOrNull()?.let { it in 1..86400 } == true) {
+            "ums.profile.privacy.max-strong-age-seconds must be between 1 and 86400"
+        }
         // No default caller registrations and no guessed app binding.
         CallerRegistrations.parse(required(environment, "ums.security.registrations"))
         runCatching { UUID.fromString(required(environment, "ums.iam.issuer-environment-ref")) }

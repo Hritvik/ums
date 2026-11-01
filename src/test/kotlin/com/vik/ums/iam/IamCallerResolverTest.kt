@@ -240,6 +240,16 @@ class IamCallerResolverTest {
         assertThat(resolver.resolve(jwtOf(with("amr" to null))).authenticationMethods).isEmpty()
     }
 
+    @Test fun `nested and boundary claim shapes are rejected`() {
+        assertThat(denial(jwtOf(with("cnf" to mapOf("jkt" to 42))))).isEqualTo(CallerDenial.DPOP_REQUIRED)
+        assertThat(denial(jwtOf(with("jti" to 42)))).isEqualTo(CallerDenial.MALFORMED_CLAIM)
+        assertThat(denial(jwtOf(with("client_id" to "")))).isEqualTo(CallerDenial.MALFORMED_CLAIM)
+        assertThat(denial(jwtOf(with("iss" to 42)))).isEqualTo(CallerDenial.ISSUER_MISMATCH)
+        assertThat(denial(jwtOf(with("scope" to (1..32).joinToString(" ") { "s$it" })))).isEqualTo(CallerDenial.SCOPE_NOT_ALLOWED)
+        assertThat(resolver.resolve(jwtOf(with("auth_time" to Instant.ofEpochSecond(now.epochSecond - 5)))).tokenId)
+            .isEqualTo("jti_0123456789abcdef")
+    }
+
     private companion object {
         const val DPOP = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFG"
     }

@@ -2,6 +2,7 @@ package com.vik.ums.profiles
 
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import com.vik.ums.foundation.CallerAuthorityInterceptor
+import com.vik.ums.privacy.ProfileDeletionService
 import com.vik.ums.iam.CallerRegistrations
 import com.vik.ums.iam.IamCallerResolver
 import org.assertj.core.api.Assertions.assertThat
@@ -19,6 +20,7 @@ import org.springframework.security.oauth2.server.resource.authentication.JwtAut
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch
+import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.header
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
@@ -29,6 +31,7 @@ import org.testcontainers.containers.PostgreSQLContainer
 import org.testcontainers.junit.jupiter.Container
 import org.testcontainers.junit.jupiter.Testcontainers
 import java.time.Instant
+import java.time.Duration
 import java.util.UUID
 
 @Testcontainers
@@ -75,10 +78,12 @@ class ProfileStatusHttpTest {
         val editing = ProfileEditingService(jdbc, tx, mapper, "test",
             ProfileCatalogs("l1", setOf("en"), "t1", setOf("UTC")), HmacPatchFingerprint(ByteArray(32) { 7 }))
         val scopeResolver = ProfileScopeResolver(jdbc, issuerEnvironmentRef)
+        val deletion = ProfileDeletionService(jdbc, tx, mapper, "test", java.time.Clock.systemUTC(), Duration.ofMinutes(5))
         mockMvc = MockMvcBuilders.standaloneSetup(
             ProfileStatusController(provisioning, scopeResolver, mapper),
             ProfileController(editing, scopeResolver, mapper),
             ProfilePatchController(editing, provisioning, scopeResolver, mapper),
+            ProfilePrivacyController(deletion, scopeResolver, mapper, Duration.ofMinutes(5)),
         )
             .addInterceptors(CallerAuthorityInterceptor(resolver, mapper))
             .build()
@@ -86,7 +91,8 @@ class ProfileStatusHttpTest {
 
     @AfterEach fun clear() = SecurityContextHolder.clearContext()
 
-    private fun authenticate() {
+    private fun authenticate(acr: String = "urn:distracted:aal2",
+                             authenticatedAt: Instant? = Instant.now().minusSeconds(10)) {
         val jwt = Jwt.withTokenValue("t").header("alg", "ES256").header("typ", "at+jwt")
             .header("kid", "dutch-key-01")
             .subject("aps_0123456789abcdefghijkL").issuer("https://iam.example.test")
@@ -96,7 +102,8 @@ class ProfileStatusHttpTest {
             .claim("token_profile", "human_access").claim("token_version", 1)
             .claim("subject_kind", "app_subject").claim("scope", "profile:read")
             .claim("app_id", "dutch-development").claim("security_version", 1)
-            .claim("acr", "urn:distracted:aal2").claim("amr", listOf("passkey"))
+            .claim("acr", acr).claim("amr", listOf("passkey"))
+            .apply { authenticatedAt?.let { claim("auth_time", it.epochSecond) } }
             .claim("cnf", mapOf("jkt" to "0123456789abcdefghijklmnopqrstuvwxyzABCDEFG"))
             .build()
         SecurityContextHolder.getContext().authentication = JwtAuthenticationToken(jwt)
@@ -230,6 +237,121 @@ class ProfileStatusHttpTest {
     }
 
     private fun uuid(): String = UUID.randomUUID().toString()
+
+    @Test fun `request status and cancellation form one privacy journey`() {
+        authenticate()
+        val key = UUID.randomUUID()
+        mockMvc.perform(post("/api/v1/profile/deletion-requests").contentType(MediaType.APPLICATION_JSON)
+            .header("Idempotency-Key", key).content("""{"expectedVersion":1}"""))
+            .andExpect(status().isAccepted)
+            .andExpect(jsonPath("$.data.status").value("ACCEPTED"))
+
+        val reference = jdbc.queryForObject("select request_reference from ums_profile_deletion_requests",
+            UUID::class.java)!!
+        val status = mockMvc.perform(get("/api/v1/profile/deletion-requests/$reference"))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.data.status").value("PENDING"))
+            .andExpect(jsonPath("$.data.cancellationEligible").value(true))
+            .andReturn().response.contentAsString
+
+        val bindingRevision = mapper.readTree(status)["data"]["bindingRevision"].asText()
+        mockMvc.perform(post("/api/v1/profile/deletion-requests/$reference/cancellation")
+            .contentType(MediaType.APPLICATION_JSON).header("Idempotency-Key", UUID.randomUUID())
+            .content("""{"expectedVersion":$bindingRevision}"""))
+            .andExpect(status().isAccepted)
+
+        assertThat(jdbc.queryForObject("select status from ums_profile_deletion_requests", String::class.java))
+            .isEqualTo("CANCELLED")
+    }
+
+    @Test fun `privacy commands require recent strong authentication`() {
+        authenticate(acr = "urn:distracted:aal1")
+        mockMvc.perform(post("/api/v1/profile/deletion-requests").contentType(MediaType.APPLICATION_JSON)
+            .header("Idempotency-Key", UUID.randomUUID()).content("""{"expectedVersion":1}"""))
+            .andExpect(status().isForbidden)
+            .andExpect(jsonPath("$.error.code").value("forbidden"))
+
+        authenticate(authenticatedAt = Instant.now().minusSeconds(3_600))
+        mockMvc.perform(post("/api/v1/profile/deletion-requests").contentType(MediaType.APPLICATION_JSON)
+            .header("Idempotency-Key", UUID.randomUUID()).content("""{"expectedVersion":1}"""))
+            .andExpect(status().isForbidden)
+
+        assertThat(jdbc.queryForObject("select count(*) from ums_profile_deletion_requests", Int::class.java)).isZero()
+    }
+
+    @Test fun `privacy commands are strict about body and identity`() {
+        authenticate()
+        mockMvc.perform(post("/api/v1/profile/deletion-requests").contentType(MediaType.APPLICATION_JSON)
+            .content("""{"expectedVersion":1}"""))
+            .andExpect(status().isBadRequest)
+        mockMvc.perform(post("/api/v1/profile/deletion-requests").contentType(MediaType.APPLICATION_JSON)
+            .header("Idempotency-Key", UUID.randomUUID()).content("""{"expectedVersion":9}"""))
+            .andExpect(status().isConflict)
+            .andExpect(jsonPath("$.error.code").value("version_conflict"))
+        assertThat(jdbc.queryForObject("select count(*) from ums_profile_deletion_requests", Int::class.java)).isZero()
+    }
+
+    @Test fun `privacy status and cancellation refuse unknown references`() {
+        authenticate()
+        mockMvc.perform(get("/api/v1/profile/deletion-requests/not-a-uuid"))
+            .andExpect(status().isNotFound)
+        mockMvc.perform(get("/api/v1/profile/deletion-requests/" + uuid()))
+            .andExpect(status().isNotFound)
+        mockMvc.perform(post("/api/v1/profile/deletion-requests/" + uuid() + "/cancellation")
+            .contentType(MediaType.APPLICATION_JSON).header("Idempotency-Key", uuid())
+            .content("""{"expectedVersion":1}"""))
+            .andExpect(status().isNotFound)
+    }
+
+    @Test fun `privacy commands reject malformed transport and missing recent authentication`() {
+        authenticate()
+        mockMvc.perform(post("/api/v1/profile/deletion-requests").content("""{"expectedVersion":1}"""))
+            .andExpect(status().isBadRequest)
+        mockMvc.perform(post("/api/v1/profile/deletion-requests").header("Idempotency-Key", "not-a-uuid")
+            .contentType(MediaType.APPLICATION_JSON).content("""{"expectedVersion":1}"""))
+            .andExpect(status().isBadRequest)
+        mockMvc.perform(post("/api/v1/profile/deletion-requests").contentType(MediaType.APPLICATION_JSON)
+            .header("Idempotency-Key", uuid()).content("x".repeat(17 * 1024)))
+            .andExpect(status().isBadRequest)
+
+        authenticate(authenticatedAt = null)
+        mockMvc.perform(post("/api/v1/profile/deletion-requests").contentType(MediaType.APPLICATION_JSON)
+            .header("Idempotency-Key", uuid()).content("""{"expectedVersion":1}"""))
+            .andExpect(status().isForbidden)
+    }
+
+    @Test fun `an unmapped caller cannot start a privacy command`() {
+        authenticate()
+        jdbc.update("delete from ums_iam_app_mappings")
+
+        mockMvc.perform(post("/api/v1/profile/deletion-requests").contentType(MediaType.APPLICATION_JSON)
+            .header("Idempotency-Key", uuid()).content("""{"expectedVersion":1}"""))
+            .andExpect(status().isNotFound)
+            .andExpect(jsonPath("$.error.code").value("unavailable"))
+    }
+
+    @Test fun `reusing a privacy idempotency key with different content is a conflict`() {
+        authenticate()
+        val key = UUID.randomUUID()
+        mockMvc.perform(post("/api/v1/profile/deletion-requests").contentType(MediaType.APPLICATION_JSON)
+            .header("Idempotency-Key", key).content("""{"expectedVersion":1}"""))
+            .andExpect(status().isAccepted)
+
+        mockMvc.perform(post("/api/v1/profile/deletion-requests").contentType(MediaType.APPLICATION_JSON)
+            .header("Idempotency-Key", key).content("""{"expectedVersion":2}"""))
+            .andExpect(status().isConflict)
+            .andExpect(jsonPath("$.error.code").value("idempotency_key_reused"))
+    }
+
+    @Test fun `a patch rejects oversized bodies and a malformed key before parsing`() {
+        authenticate()
+        mockMvc.perform(patch("/api/v1/profile").contentType(MediaType.APPLICATION_JSON)
+            .header("Idempotency-Key", "not-a-uuid").content(patchBody("Ada")))
+            .andExpect(status().isBadRequest)
+        mockMvc.perform(patch("/api/v1/profile").contentType(MediaType.APPLICATION_JSON)
+            .header("Idempotency-Key", uuid()).content("x".repeat(17 * 1024)))
+            .andExpect(status().isBadRequest)
+    }
 
     @Test fun `an unauthenticated request is refused before the handler`() {
         SecurityContextHolder.getContext().authentication =
