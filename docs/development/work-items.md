@@ -319,6 +319,7 @@ Five provider inputs do not exist yet and are carried as named gaps rather than 
 - [ ] The same closure never produces a duplicate intent for the same notice class, including after process restart or repeated reconciliation.
 - [ ] A closure observed after a notice window has started records a terminal window-passed intent and publishes it, without moving the retention deadline.
 - [ ] Reactivation, an earlier deletion obligation, and erasure each suppress outstanding intents with a published withdrawal fact, and a failed handoff is reported as failed rather than acknowledged.
+- [ ] Cancelling a deletion that still leaves a retained profile re-arms the notices whose windows have not passed, so erasure never happens after a withdrawal with no replacement notice.
 - [ ] Automated tests cover both windows, late closure, duplicate reconciliation, a re-closure at the same authoritative time, suppression by each cause, late acknowledgement, the window-start boundary, and failure reporting.
 
 **Depends on.** `W-1.`

@@ -49,17 +49,17 @@ are left as history.
 
 On 1 November 2026, `./gradlew clean check bootJar --no-daemon --console=plain`
 passed with the JDK 21 and Colima settings in [foundation](foundation.md):
-129 JVM tests, zero failures/errors/skips, seven contract-suite tests, and
-twenty-two producer/input checks. JaCoCo reported 98.4% line and 84.3% branch
+131 JVM tests, zero failures/errors/skips, seven contract-suite tests, and
+twenty-two producer/input checks. JaCoCo reported 98.5% line and 84.0% branch
 coverage without exclusions, including 71 contract fixtures.
 
-Eleven PostgreSQL notice tests cover both windows and their deterministic
+Thirteen PostgreSQL notice tests cover both windows and their deterministic
 identities, the idempotent retry, a late-observed closure that records the passed
 window, the delivery state machine and its refusals, reactivation suppression
 with fresh intents after a second closure at the same authoritative time,
-suppression by an earlier deletion and by both erasure paths, a late
-acknowledgement after suppression, the exact window-start boundary, and active or
-absent profiles. A producer check validates an actual persisted intent
+suppression by an earlier deletion and by both erasure paths, re-arming when a
+deletion is cancelled, a late acknowledgement after suppression, the exact
+window-start boundary, and active or absent profiles. A producer check validates an actual persisted intent
 against the published `notice-intent.json` and confirms it carries no contact,
 channel, wording, or personal value.
 

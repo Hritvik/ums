@@ -7,6 +7,7 @@ import com.vik.ums.lifecycle.ProfileReactivationService
 import com.vik.ums.lifecycle.TrustedClosureFact
 import com.vik.ums.lifecycle.TrustedExpiryFact
 import com.vik.ums.lifecycle.TrustedReactivationFact
+import com.vik.ums.privacy.DeletionCancellationCommand
 import com.vik.ums.privacy.DeletionRequestCommand
 import com.vik.ums.privacy.MaintenancePurpose
 import com.vik.ums.privacy.PrivacyPurpose
@@ -259,6 +260,45 @@ class ProfileNoticeTest {
         val result = schedule().first { it.noticeClass == NoticeClass.CLOSURE_EXPIRY_14_DAY }
 
         assertThat(result.outcome).isEqualTo(NoticeOutcome.QUEUED)
+    }
+
+    @Test fun `cancelling a deletion re-arms the retention notices`() {
+        close()
+        schedule()
+        val actor = TrustedPrivacyAuthority(scope, UUID.randomUUID(), PrivacyPurpose.REQUEST_DELETION,
+            clock.instant(), true, clock.instant().plus(Duration.ofMinutes(10)))
+        val accepted = deletion.request(actor, DeletionRequestCommand(UUID.randomUUID(), 2, "privacy"))
+        assertThat(jdbc.queryForList("select state from ums_profile_notice_intents", String::class.java))
+            .containsOnly("SUPPRESSED")
+
+        val cancelling = TrustedPrivacyAuthority(scope, UUID.randomUUID(), PrivacyPurpose.CANCEL_DELETION,
+            clock.instant(), true, clock.instant().plus(Duration.ofMinutes(10)))
+        deletion.cancel(cancelling, DeletionCancellationCommand(accepted.operationReference,
+            UUID.randomUUID(), 3, "privacy"))
+
+        // The retention obligation is live again, so the owner must be told the notices are back.
+        assertThat(jdbc.queryForList("select state from ums_profile_notice_intents", String::class.java))
+            .containsOnly("QUEUED")
+        assertThat(jdbc.queryForObject("""select max((payload ->> 'noticeRevision')::bigint) from ums_event_outbox
+            where event_type = 'ums.profile.notice-intent.v1' and payload ->> 'state' = 'QUEUED'""",
+            Long::class.java)).isEqualTo(3L)
+    }
+
+    @Test fun `app-only erasure suppresses intents that outlived the request`() {
+        close()
+        schedule()
+        val actor = TrustedPrivacyAuthority(scope, UUID.randomUUID(), PrivacyPurpose.REQUEST_DELETION,
+            clock.instant(), true, clock.instant().plus(Duration.ofMinutes(10)))
+        val accepted = deletion.request(actor, DeletionRequestCommand(UUID.randomUUID(), 2, "privacy"))
+        // A concurrent re-arm (for example after a cancelled retry) leaves them live again.
+        jdbc.update("update ums_profile_notice_intents set state = 'QUEUED'")
+        clock.advance(Duration.ofDays(30))
+
+        finalization.finalize(TrustedMaintenanceAuthority(app, UUID.randomUUID(),
+            MaintenancePurpose.FINALIZE_APP_DELETION), scope, accepted.operationReference, "lifecycle")
+
+        assertThat(jdbc.queryForList("select state from ums_profile_notice_intents", String::class.java))
+            .containsOnly("SUPPRESSED")
     }
 
     private fun stateOf(reference: UUID): String =

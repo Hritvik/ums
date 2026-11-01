@@ -81,6 +81,7 @@ class ProfileNoticeService(
 
     fun markHandedOff(authority: TrustedNoticeAuthority, scope: ProfileScope, reference: UUID, correlationId: String) {
         val stored = requireTransition(authority, scope, reference)
+        if (stored.state == NoticeState.HANDED_OFF) return
         require(stored.state in setOf(NoticeState.QUEUED, NoticeState.FAILED)) {
             "Notice transition is not allowed from ${stored.state}"
         }
@@ -90,6 +91,7 @@ class ProfileNoticeService(
     /** A late delivery after suppression is recorded, not turned into a permanent adapter error. */
     fun acknowledge(authority: TrustedNoticeAuthority, scope: ProfileScope, reference: UUID, correlationId: String) {
         val stored = requireTransition(authority, scope, reference)
+        if (stored.state == NoticeState.ACKNOWLEDGED) return
         require(stored.state in setOf(NoticeState.HANDED_OFF, NoticeState.SUPPRESSED)) {
             "Notice transition is not allowed from ${stored.state}"
         }
@@ -101,6 +103,7 @@ class ProfileNoticeService(
              failureClass: String, correlationId: String) {
         require(failureClass in SAFE_FAILURE_CLASSES) { "Failure class is not a known safe code" }
         val stored = requireTransition(authority, scope, reference)
+        if (stored.state == NoticeState.FAILED) return
         require(stored.state in setOf(NoticeState.QUEUED, NoticeState.HANDED_OFF)) {
             "Notice transition is not allowed from ${stored.state}"
         }

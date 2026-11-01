@@ -2,7 +2,7 @@ package com.vik.ums.privacy
 
 /** Recognized expected local fences only; unexpected defects and data integrity failures are not classified as blocked. */
 enum class FinalizationBlockReason {
-    APP_UNAVAILABLE, REQUEST_UNAVAILABLE, PROFILE_UNAVAILABLE, CANCELLED,
+    APP_UNAVAILABLE, REQUEST_UNAVAILABLE, PROFILE_UNAVAILABLE, CANCELLED, SUPERSEDED,
     GENERATION_MISMATCH, NOT_DUE, CONTENT_AUTHORITY_UNAVAILABLE,
 }
 class FinalizationBlockedException(val reason: FinalizationBlockReason) :

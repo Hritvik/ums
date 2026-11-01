@@ -229,7 +229,7 @@ class ProfileExpiryTest {
             .isEqualTo(Instant.parse(status.acceptedAt).plus(Duration.ofDays(30)))
     }
 
-    @Test fun `reactivation and expiry serialize without resurrecting or double erasing`() {
+    @Test fun `expiry wins when reactivation is attempted at the deadline`() {
         close()
         clock.advance(Duration.ofDays(90))
         val start = CountDownLatch(1)
@@ -241,27 +241,16 @@ class ProfileExpiryTest {
                 reactivation.reactivate(TrustedReactivationFact(scope, UUID.randomUUID(), "lifecycle")).outcome
             })
             start.countDown()
-            val expired = expire.get(30, TimeUnit.SECONDS)
-            val reopened = reactivate.get(30, TimeUnit.SECONDS)
-            val lifecycle = jdbc.queryForObject("select lifecycle from ums_profile_bindings", String::class.java)
-            when {
-                expired == ExpiryOutcome.EXPIRED -> {
-                    assertThat(lifecycle).isEqualTo("ERASED")
-                    assertThat(reopened).isEqualTo(ReactivationOutcome.UNAVAILABLE)
-                    assertThat(jdbc.queryForObject("select count(*) from ums_profile_erasure_obligations",
-                        Int::class.java)).isEqualTo(1)
-                }
-                else -> {
-                    assertThat(expired).isEqualTo(ExpiryOutcome.SKIPPED)
-                    assertThat(lifecycle).isEqualTo("ACTIVE")
-                    assertThat(jdbc.queryForObject("select count(*) from ums_profile_erasure_obligations",
-                        Int::class.java)).isZero()
-                }
-            }
+            // Reactivation is refused at the deadline irrespective of ordering; expiry is due.
+            assertThat(expire.get(30, TimeUnit.SECONDS)).isEqualTo(ExpiryOutcome.EXPIRED)
+            assertThat(reactivate.get(30, TimeUnit.SECONDS)).isEqualTo(ReactivationOutcome.UNAVAILABLE)
         } finally {
             pool.shutdownNow()
         }
-        assertThat(eventCount()).isLessThanOrEqualTo(4)
+        assertThat(jdbc.queryForObject("select lifecycle from ums_profile_bindings", String::class.java))
+            .isEqualTo("ERASED")
+        assertThat(jdbc.queryForObject("select count(*) from ums_profile_erasure_obligations", Int::class.java))
+            .isEqualTo(1)
     }
 
     private fun eventCount(): Int =

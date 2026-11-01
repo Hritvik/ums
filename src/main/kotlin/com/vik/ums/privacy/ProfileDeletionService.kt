@@ -1,6 +1,7 @@
 package com.vik.ums.privacy
 
 import com.fasterxml.jackson.databind.ObjectMapper
+import com.vik.ums.notices.rearmNotices
 import com.vik.ums.notices.suppressNotices
 import com.vik.ums.profiles.*
 import org.springframework.jdbc.core.JdbcTemplate
@@ -60,6 +61,10 @@ class ProfileDeletionService(
         val presentFields = fields.fields(authority.scope).keys
         val ready = lifecycle == Lifecycle.ACTIVE && policy.requiredFields.all { it in presentFields }
         persistence.transition(authority.scope, lifecycle.name, if (ready) Readiness.PROFILE_READY.name else Readiness.PROFILE_REQUIRED.name)
+        if (lifecycle == Lifecycle.CLOSED) {
+            // The retention obligation is live again, so its notices must be re-armed.
+            rearmNotices(jdbc, mapper, environment, authority.scope, command.correlationId, now)
+        }
         val after = current(authority.scope)
         val result = PrivacyAccepted(request.reference, Math.addExact(request.revision.toLong(), 1).toString())
         persistence.record(authority, command.idempotencyKey, fingerprint, after, result, now, command.correlationId)

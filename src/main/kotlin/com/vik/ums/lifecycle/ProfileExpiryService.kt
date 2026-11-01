@@ -62,8 +62,8 @@ class ProfileExpiryService(
         if (!contentAuthorized(fact.scope)) return@execute ExpiryResult(ExpiryOutcome.CONTENT_BLOCKED, current)
 
         val revision = Math.addExact(current.bindingRevision.toLong(), 1)
-        check(persistence.expireErased(fact.scope, revision, current.bindingRevision.toLong())) {
-            "Profile is no longer a retained generation"
+        if (!persistence.expireErased(fact.scope, revision, current.bindingRevision.toLong())) {
+            return@execute ExpiryResult(ExpiryOutcome.SKIPPED, bindings.binding(fact.scope))
         }
         val superseded = mapper.writeValueAsString(
             listOfNotNull(

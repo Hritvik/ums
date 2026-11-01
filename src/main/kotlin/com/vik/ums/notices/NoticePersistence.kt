@@ -76,6 +76,23 @@ internal class NoticePersistence(private val jdbc: JdbcTemplate) {
             rs.getTimestamp(3).toInstant(), rs.getString(4), rs.getLong(5)) },
         Timestamp.from(now), scope.issuerEnvironmentRef, scope.appReference, scope.subjectReference)
 
+    fun suppressed(scope: ProfileScope): List<SuppressedNotice> = jdbc.query("""select notice_reference,
+        notice_class, deadline, dedupe_identity, notice_revision from ums_profile_notice_intents
+        where issuer_environment_ref = ? and app_reference = ? and subject_reference = ? and state = 'SUPPRESSED'""",
+        { rs, _ -> SuppressedNotice(rs.getObject(1, UUID::class.java), NoticeClass.valueOf(rs.getString(2)),
+            rs.getTimestamp(3).toInstant(), rs.getString(4), rs.getLong(5)) },
+        scope.issuerEnvironmentRef, scope.appReference, scope.subjectReference)
+
+    /** Re-arms a suppressed intent when the obligation that suppressed it is withdrawn. */
+    fun revive(scope: ProfileScope, reference: UUID, state: NoticeState, now: Instant): Long? =
+        jdbc.query("""update ums_profile_notice_intents
+            set state = ?, suppressed_at = null, window_passed_at = ?, notice_revision = notice_revision + 1
+            where issuer_environment_ref = ? and app_reference = ? and subject_reference = ?
+            and notice_reference = ? and state = 'SUPPRESSED' returning notice_revision""",
+            { rs, _ -> rs.getLong(1) }, state.name,
+            if (state == NoticeState.WINDOW_PASSED) Timestamp.from(now) else null,
+            scope.issuerEnvironmentRef, scope.appReference, scope.subjectReference, reference).singleOrNull()
+
     /**
      * Monotonic per-scope stream position. Held under the application lock, and independent of
      * outbox retention so pruning published rows cannot restart the counter.
@@ -112,6 +129,21 @@ internal fun appendNoticeFact(
         values (?, ?, ?, ?, 'ums.profile.notice-intent.v1', ?::jsonb, ?)""",
         UUID.randomUUID(), scope.appReference.toString(), streamId, streamRevision, payload,
         Timestamp.from(occurredAt))
+}
+
+/** Re-arms intents whose suppressing obligation was withdrawn, and publishes the change. */
+internal fun rearmNotices(
+    jdbc: JdbcTemplate, mapper: ObjectMapper, environment: String, scope: ProfileScope,
+    correlationId: String, occurredAt: Instant,
+) {
+    val persistence = NoticePersistence(jdbc)
+    persistence.suppressed(scope).forEach { notice ->
+        val windowStart = notice.deadline.minusSeconds(notice.noticeClass.windowDays * 86_400)
+        val target = if (occurredAt.isAfter(windowStart)) NoticeState.WINDOW_PASSED else NoticeState.QUEUED
+        val revision = persistence.revive(scope, notice.reference, target, occurredAt) ?: return@forEach
+        appendNoticeFact(jdbc, mapper, environment, scope, notice.reference, notice.noticeClass, notice.deadline,
+            notice.dedupeIdentity, target, revision, correlationId, occurredAt)
+    }
 }
 
 /** Suppresses outstanding intents and publishes one withdrawal fact per affected notice. */

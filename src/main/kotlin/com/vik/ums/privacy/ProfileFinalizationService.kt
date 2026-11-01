@@ -33,6 +33,7 @@ class ProfileFinalizationService(
             val request = persistence.findRequest(scope, reference)
                 ?: throw FinalizationBlockedException(FinalizationBlockReason.REQUEST_UNAVAILABLE)
             val before = bindings.binding(scope) ?: throw FinalizationBlockedException(FinalizationBlockReason.PROFILE_UNAVAILABLE)
+            if (request.status == "SUPERSEDED") throw FinalizationBlockedException(FinalizationBlockReason.SUPERSEDED)
             if (request.status == "LOCAL_COMPLETED") {
                 check(persistence.completedFence(scope, request, before)) { "Completed deletion fence does not match current binding" }
                 return@execute completed(request, before)
@@ -74,7 +75,7 @@ class ProfileFinalizationService(
         jdbc.update("""delete from ums_profile_deletion_causes where issuer_environment_ref = ? and app_reference = ? and subject_reference = ?""",
             scope.issuerEnvironmentRef, scope.appReference, scope.subjectReference)
         jdbc.update("""update ums_profile_bindings set lifecycle='ERASED', readiness='PROFILE_REQUIRED', profile_reference=null,
-            generation=null, profile_revision=null, closure_present=false, closure_at=null, closure_retain_until=null,
+            generation=null, profile_revision=null, closure_present=false, closure_reference=null, closure_at=null, closure_retain_until=null,
             display_name=null, avatar_reference=null, display_locale=null,
             display_timezone=null, binding_revision=?, completed_deletion_request_reference=?
             where issuer_environment_ref=? and app_reference=? and subject_reference=?""",

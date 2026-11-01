@@ -30,7 +30,9 @@ insert into ums_profile_erasure_obligations (fence_reference, issuer_environment
 select gen_random_uuid(), f.issuer_environment_ref, f.app_reference, f.subject_reference, 'APP_DELETION',
     f.request_reference, f.retired_profile_reference, f.retired_generation,
     coalesce(r.accepted_at, current_timestamp), '[]'::jsonb, f.erased_binding_revision,
-    coalesce(r.accepted_at, current_timestamp)
+    coalesce((select min(a.occurred_at) from ums_profile_privacy_audit a
+              where a.operation_reference = f.request_reference and a.action = 'FINALIZE_APP_DELETION'),
+             r.accepted_at, current_timestamp)
 from ums_profile_erasure_fences f
 left join ums_profile_deletion_requests r on r.request_reference = f.request_reference;
 
@@ -72,3 +74,10 @@ alter table ums_profile_notice_intents
 alter table ums_profile_notice_intents drop constraint ums_profile_notice_intents_state_check;
 alter table ums_profile_notice_intents add constraint ums_profile_notice_intents_state_check
     check (state in ('QUEUED', 'HANDED_OFF', 'ACKNOWLEDGED', 'FAILED', 'SUPPRESSED', 'WINDOW_PASSED'));
+
+-- 5. Existing V11-era intents inherit their binding's closure instance so the
+-- nullable column is never read into a non-null field.
+update ums_profile_notice_intents n set closure_reference = b.closure_reference
+from ums_profile_bindings b
+where n.issuer_environment_ref = b.issuer_environment_ref and n.app_reference = b.app_reference
+  and n.subject_reference = b.subject_reference and n.closure_reference is null;
