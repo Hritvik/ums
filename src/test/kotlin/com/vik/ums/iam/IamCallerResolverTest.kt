@@ -6,6 +6,7 @@ import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.Test
 import org.springframework.security.oauth2.jwt.Jwt
 import java.io.File
+import java.math.BigInteger
 import java.time.Clock
 import java.time.Instant
 import java.time.ZoneId
@@ -207,7 +208,39 @@ class IamCallerResolverTest {
         }.isInstanceOf(IllegalArgumentException::class.java)
     }
 
-        private companion object {
+        @Test fun `numeric claims accept only exact integral values`() {
+        assertThat(resolver.resolve(jwtOf(with("token_version" to BigInteger.ONE))).securityVersion).isEqualTo(1)
+        assertThat(resolver.resolve(jwtOf(with("security_version" to 1.0))).securityVersion).isEqualTo(1)
+        assertThat(denial(jwtOf(with("token_version" to BigInteger("9223372036854775808")))))
+            .isEqualTo(CallerDenial.VERSION_UNSUPPORTED)
+        assertThat(denial(jwtOf(with("security_version" to BigInteger("-1")))))
+            .isEqualTo(CallerDenial.MALFORMED_CLAIM)
+        assertThat(denial(jwtOf(with("security_version" to 1.5)))).isEqualTo(CallerDenial.MALFORMED_CLAIM)
+    }
+
+    @Test fun `claim value types are not coerced`() {
+        assertThat(denial(jwtOf(with("sub" to 123)))).isEqualTo(CallerDenial.MALFORMED_CLAIM)
+        assertThat(denial(jwtOf(with("scope" to listOf("member:read"))))).isEqualTo(CallerDenial.MALFORMED_CLAIM)
+        assertThat(denial(jwtOf(with("app_id" to 1)))).isEqualTo(CallerDenial.MALFORMED_CLAIM)
+        assertThat(denial(jwtOf(with("aud" to mapOf("value" to "https://api.dutch.invalid")))))
+            .isEqualTo(CallerDenial.AUDIENCE_MISMATCH)
+        assertThat(denial(jwtOf(with("cnf" to "not-an-object")))).isEqualTo(CallerDenial.DPOP_REQUIRED)
+        assertThat(denial(jwtOf(with("cnf" to emptyMap<String, Any>())))).isEqualTo(CallerDenial.MALFORMED_CLAIM)
+    }
+
+    @Test fun `header members must be present and textual`() {
+        assertThat(denial(jwtOf(claims, header - "typ"))).isEqualTo(CallerDenial.HEADER_MISMATCH)
+        assertThat(denial(jwtOf(claims, header - "alg"))).isEqualTo(CallerDenial.HEADER_MISMATCH)
+        assertThat(denial(jwtOf(claims, header + ("kid" to 42)))).isEqualTo(CallerDenial.HEADER_MISMATCH)
+    }
+
+    @Test fun `authentication method bounds are enforced`() {
+        assertThat(denial(jwtOf(with("amr" to (1..9).map { "m$it" })))).isEqualTo(CallerDenial.MALFORMED_CLAIM)
+        assertThat(denial(jwtOf(with("amr" to listOf("passkey", 7))))).isEqualTo(CallerDenial.MALFORMED_CLAIM)
+        assertThat(resolver.resolve(jwtOf(with("amr" to null))).authenticationMethods).isEmpty()
+    }
+
+    private companion object {
         const val DPOP = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFG"
     }
 
