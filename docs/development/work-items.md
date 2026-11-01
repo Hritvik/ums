@@ -1,5 +1,7 @@
 # Work Items — UMS remaining implementation (Slices D–G)
 
+> **Coordination status (2026-11-01).** Status lines below were added during central task reconciliation. Only W-1–W-3 have owner-recorded state; W-4–W-18 are marked Planned until the UMS owner records evidence. The central registry is authoritative for execution state and leases.
+
 These work items continue the build sequence in the [implementation handoff](../ums-platform/issues/08-define-verification-and-implementation-handoff.md) after the already-verified Foundation and Slices A, B, and D1–D3. The scope boundary is recorded in [artifacts/scope-boundary.md](artifacts/scope-boundary.md). Work items are numbered `W-N` for cross-reference only. `Depends on` lines refer to other work items in this file.
 
 Five provider inputs do not exist yet and are carried as named gaps rather than invented: an IAM app-departure/global-deletion event contract (inherited by W-4 and W-6), a content-provider reference/cleanup contract (W-11), a notice-owner delivery contract (W-10 and W-15), a Dutch-owned Member-association contract (W-8), and named operators/consumer owners (W-14, W-15, W-18). Until an owner accepts one, the affected work item may build and verify the local behavior but cannot claim the integration.
@@ -20,6 +22,8 @@ Five provider inputs do not exist yet and are carried as named gaps rather than 
 ## W-1 — Close a profile on app departure and publish its retention deadline
 
 **Summary.** When a person leaves an app, their profile for that app must stop being usable, but it must not be silently erased. Today the code can represent a closed profile but nothing ever closes one. This item adds that transition and records the date by which the retained data will be erased. It also makes the closure visible to the app as a normal lifecycle fact.
+
+**Status.** Complete — recorded as done by the UMS owner and mirrored in the central registry (`ums/W-1`, manual).
 
 **Work to be done.**
 - Add a trusted application seam that closes the current profile for one app and subject, following the same constructor-bound authority style as the existing onboarding and privacy seams.
@@ -51,6 +55,8 @@ Five provider inputs do not exist yet and are carried as named gaps rather than 
 
 **Summary.** A person who returns to an app after leaving should get their retained profile back, but only through a deliberate action and only while it still exists. Login, a retried event, or a normal edit must never do it by accident. This item adds that reopen path and its failure rules.
 
+**Status.** Complete — recorded as done by the UMS owner and mirrored in the central registry (`ums/W-2`, manual).
+
 **Work to be done.**
 - Add a trusted reactivation seam for one app and subject that succeeds only from a closed profile whose retention deadline has not passed.
   - Reuse the closure item's lock and deadline fields so reactivation and closure expiry race through one transaction.
@@ -78,6 +84,8 @@ Five provider inputs do not exist yet and are carried as named gaps rather than 
 ## W-3 — Erase retained profiles when the closure deadline passes
 
 **Summary.** A closed profile is kept for a fixed period so the person can come back. After that period it must be erased even if nobody is watching. This item adds that expiry, using the erasure path that already exists for deletion requests.
+
+**Status.** Active — recorded as in progress by the UMS owner (`ums/W-3`, manual, without a central lease).
 
 **Work to be done.**
 - Add a trusted maintenance seam that erases a closed profile whose retention deadline has passed.
@@ -107,6 +115,8 @@ Five provider inputs do not exist yet and are carried as named gaps rather than 
 
 **Summary.** IAM can delete a person's global identity, which must erase their UMS profiles. That obligation is separate from a person deleting their profile in one app, and neither may cancel or extend the other. Today the code can represent a global cause but nothing applies one.
 
+**Status.** Planned — no completion evidence was recorded in the 2026-11-01 reconciliation; the owner must update this line.
+
 **Work to be done.**
 - Add trusted seams that record a global deletion as pending, cancel it, or finalize it for one app and subject, storing it as its own cause with its own source version and deadline.
 - Enforce independence: removing the app-only cause leaves the global one, removing the global one leaves the app-only one, and an earlier app-only deadline survives a later global cancellation.
@@ -134,6 +144,8 @@ Five provider inputs do not exist yet and are carried as named gaps rather than 
 ## W-5 — Validate real IAM caller authority at the resource server
 
 **Summary.** Every capability so far trusts a caller object that a test constructs. Real callers will present tokens, and those tokens must be checked for the right issuer, audience, app, subject, assurance, and delegation before anything is allowed. This item replaces the trust seam with real validation and defines the caller context every other surface will use.
+
+**Status.** Planned — no completion evidence was recorded in the 2026-11-01 reconciliation; the owner must update this line.
 
 **Work to be done.**
 - Replace the test-only decoder path with production token validation that checks issuer, environment, audience, token kind, app binding, subject kind, assurance, security versions, and registered delegation.
@@ -163,6 +175,8 @@ Five provider inputs do not exist yet and are carried as named gaps rather than 
 
 **Summary.** Profiles must be created, closed, and deleted from IAM facts that actually arrive over the network, and duplicates, gaps, and out-of-order delivery must not corrupt state. Today only a local adapter call exists. This item adds the authenticated entry point and the repair behavior around it.
 
+**Status.** Planned — no completion evidence was recorded in the 2026-11-01 reconciliation; the owner must update this line.
+
 **Work to be done.**
 - Add a private, authenticated inbound endpoint that accepts only the registered IAM event types for the registered app, and rejects unknown fields, duplicate keys, oversized bodies, and trailing content.
 - Route each accepted fact into the existing inbox and adapter path so receipts, checkpoints, mappings, state, and outbox continue to commit together.
@@ -189,6 +203,8 @@ Five provider inputs do not exist yet and are carried as named gaps rather than 
 ## W-7 — Serve the app-scoped profile HTTP surface
 
 **Summary.** The service currently exposes no business routes, so no product can use it. This item turns the already-tested internal services into the eight operations the published contract describes, with honest status codes and bounded bodies.
+
+**Status.** Planned — no completion evidence was recorded in the 2026-11-01 reconciliation; the owner must update this line.
 
 **Work to be done.**
 - Implement the declared profile read and update operations, the status read, the display-read batch, the deletion request and cancellation commands, and the policy reconciliation operation against the existing application services.
@@ -218,6 +234,8 @@ Five provider inputs do not exist yet and are carried as named gaps rather than 
 
 **Summary.** Dutch keeps its own member records and needs to know which UMS profile belongs to which member. No such contract exists, so the integration cannot be built. This item establishes it with Dutch as the owning party and connects the two sides without moving any Dutch rules into UMS.
 
+**Status.** Planned — no completion evidence was recorded in the 2026-11-01 reconciliation; the owner must update this line.
+
 **Work to be done.**
 - Agree with the Dutch owner on the association record, its keys, its lifecycle, and who publishes what; write it down as a versioned contract with fixtures before writing client code.
 - Implement the UMS side as a client that reports the minimal app-scoped facts Dutch needs to associate a member, and that never sends display values or global identifiers.
@@ -245,6 +263,8 @@ Five provider inputs do not exist yet and are carried as named gaps rather than 
 
 **Summary.** A person is entitled to a copy of the data UMS holds about them for one app. That copy must not become a permanent second store of personal data, and it must disappear if the profile is deleted while it exists. This item adds export generation, a short-lived download, and the invalidation rules around them.
 
+**Status.** Planned — no completion evidence was recorded in the 2026-11-01 reconciliation; the owner must update this line.
+
 **Work to be done.**
 - Define and publish the export contract before implementing it: the artifact states, the 24-hour artifact lifetime, and the single-use download capability of at most five minutes.
 - Generate an export containing only the requester's own app-scoped UMS-owned fields and releasable lifecycle facts, produced under recent-strong authority and recorded in the audit trail.
@@ -271,6 +291,8 @@ Five provider inputs do not exist yet and are carried as named gaps rather than 
 ## W-10 — Schedule advance notices before closure expiry
 
 **Summary.** Erasing a retained profile without warning would be unfair, so the person must be told twice before it happens. UMS does not hold contact details, so it can only publish a minimal notice intent that the product turns into a real message. This item adds those intents and tracks what happened to them.
+
+**Status.** Planned — no completion evidence was recorded in the 2026-11-01 reconciliation; the owner must update this line.
 
 **Work to be done.**
 - Define and publish the notice-intent contract before implementing it: the notice classes, the deduplication identity, and the delivery states the product reports back.
@@ -300,6 +322,8 @@ Five provider inputs do not exist yet and are carried as named gaps rather than 
 
 **Summary.** An avatar is currently just a stored reference, because no content provider has agreed how attachments are created, revoked, or cleaned up. Until that exists, a person cannot attach one and erasure cannot honestly claim the image is gone. This item closes that gap with the content owner.
 
+**Status.** Planned — no completion evidence was recorded in the 2026-11-01 reconciliation; the owner must update this line.
+
 **Work to be done.**
 - Agree with the content owner on reference format, attach and revoke semantics, ownership verification, cleanup confirmation, and what UMS may claim.
 - Replace the current unconditional rejection with validated attachment under that contract, keeping explicit clearing supported.
@@ -326,6 +350,8 @@ Five provider inputs do not exist yet and are carried as named gaps rather than 
 ## W-12 — Publish outbox facts through a retrying relay
 
 **Summary.** The service records what happened in an outbox, but nothing ever sends it, so no consumer has ever received a real event. This item adds the sender, including what happens when a consumer is down for a long time. It must deliver at least once without inventing exactly-once claims.
+
+**Status.** Planned — no completion evidence was recorded in the 2026-11-01 reconciliation; the owner must update this line.
 
 **Work to be done.**
 - Add a relay that claims unpublished outbox rows, publishes them in binding-revision order per binding, and marks them published only after the transport accepts them.
@@ -354,6 +380,8 @@ Five provider inputs do not exist yet and are carried as named gaps rather than 
 
 **Summary.** Every record the service keeps has a stated lifetime, but nothing currently deletes anything on time. That turns a disclosed retention promise into indefinite storage. This item adds the sweeps and the safeguards that keep erasure evidence while removing everything else.
 
+**Status.** Planned — no completion evidence was recorded in the 2026-11-01 reconciliation; the owner must update this line.
+
 **Work to be done.**
 - Implement sweeps for the records with a declared lifetime: command receipts, published outbox and processed inbox payloads, export artifacts, and failed or partial exports.
 - Leave erasure fences and minimal lifecycle audit in place, and refuse to sweep a record that is still needed to reject historical traffic.
@@ -379,6 +407,8 @@ Five provider inputs do not exist yet and are carried as named gaps rather than 
 ## W-14 — Prove erasure survives restoring a backup
 
 **Summary.** If a backup taken before a deletion is restored, the deleted data must not come back. That is the hardest promise in the design and it cannot be met by the database alone. This item establishes independently durable deletion evidence and proves it with an actual restore.
+
+**Status.** Planned — no completion evidence was recorded in the 2026-11-01 reconciliation; the owner must update this line.
 
 **Work to be done.**
 - Decide and implement how acknowledged lifecycle transitions survive a restore, through an independently durable minimized journal or an equivalent mechanism the chosen infrastructure can actually provide.
@@ -407,6 +437,8 @@ Five provider inputs do not exist yet and are carried as named gaps rather than 
 
 **Summary.** Erasure, notices, retries, and sweeps all exist as code that somebody must call by hand. In a real deployment they need to run on their own and shout when they fall behind. This item adds the scheduling, the alerts, and the procedures an operator follows.
 
+**Status.** Planned — no completion evidence was recorded in the 2026-11-01 reconciliation; the owner must update this line.
+
 **Work to be done.**
 - Add worker modes that run the finalizers, notice scheduling, relay, sweeps, and backup checks on a defined cadence, with single-flight behavior so two workers do not duplicate work.
 - Emit the alerts the design requires: erasure work past its deadline, work exceeding the 24-hour objective, a missed daily backup, a poisoned event, repeated authorization or configuration failure, and failed privacy or export cleanup.
@@ -432,6 +464,8 @@ Five provider inputs do not exist yet and are carried as named gaps rather than 
 ## W-16 — Prove the security and privacy boundaries under attack
 
 **Summary.** The design forbids cross-app access and personal data in the wrong places, but nobody has tried to break it. This item attacks the service on purpose and records what held and what did not. It also runs the dependency and secret checks a release needs.
+
+**Status.** Planned — no completion evidence was recorded in the 2026-11-01 reconciliation; the owner must update this line.
 
 **Work to be done.**
 - Attempt the documented attacks: foreign app, wrong subject, replayed token, stale security version, forged delegation, cross-app listing, hidden-target enumeration, and access after erasure.
@@ -460,6 +494,8 @@ Five provider inputs do not exist yet and are carried as named gaps rather than 
 
 **Summary.** The service will be upgraded while it holds real data, and a bad upgrade must not lose or resurrect anything. This item proves the migrations work forward from every earlier state and records what a rollback cannot do.
 
+**Status.** Planned — no completion evidence was recorded in the 2026-11-01 reconciliation; the owner must update this line.
+
 **Work to be done.**
 - Test a forward migration from each previously shipped schema state to the current one, including from a database that carries erased profiles and open deletion requests.
 - Prove an interrupted migration leaves the database in a defined state and can be resumed rather than silently half-applied.
@@ -485,6 +521,8 @@ Five provider inputs do not exist yet and are carried as named gaps rather than 
 ## W-18 — Prove the real Dutch consumer journey end to end
 
 **Summary.** Everything so far has been proven locally, with a simulated product. The release claim only becomes real when a person can enter through IAM, get a profile, be associated as a Dutch member, and be correctly refused a Ledger action without the right permission. This item produces that evidence with the owning teams.
+
+**Status.** Planned — no completion evidence was recorded in the 2026-11-01 reconciliation; the owner must update this line.
 
 **Work to be done.**
 - Run the journey against real services: IAM entry and activation, UMS profile creation and required fields, Dutch member association, and a product shell gated on readiness.

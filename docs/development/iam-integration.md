@@ -5,11 +5,16 @@ IAM-to-Dutch journey exit criteria in the [implementation handoff](../ums-platfo
 
 ## Provider evidence and boundary
 
-IAM publishes `iam.app-subject.onboarding-ready.v1` and an app-scoped onboarding
-snapshot contract. Its current implementation provides outbox and identity
-primitives; login, app activation, onboarding production, and the snapshot HTTP
-handler are not implemented. Published schemas alone do not prove delivery or
-producer authentication.
+IAM W-7–W-9 are complete and independently accepted in `~/repositories/iam`:
+native DPoP (W-7), app activation and `iam.app-subject.onboarding-ready.v1`
+(W-8), and the onboarding relay plus app-scoped snapshot HTTP surface (W-9).
+Evidence lives in IAM `docs/identity-platform/wayfinder/agent-work/w09`.
+
+The remaining provider gap is deployment, not product code: no production
+outbox transport, workload/mTLS authenticator, snapshot rate limiting, or relay
+scheduler is implemented. Published schemas and local runs still do not prove
+deployment, producer authentication, or delivery; UMS must keep the adapter
+fail-closed and configuration-driven.
 
 IAM wire identifiers are strings (`evt_`, `aps_`, `act_`), not UMS UUIDs.
 They require durable private mappings. Trust in the issuer/environment and app
@@ -32,10 +37,15 @@ UUID identity events and `ums.member.mapping.changed.v1` do not match shared
 UMS's app-scoped profile state event. Dutch Member IDs, placeholders, claims,
 canonicalization, and Ledger permissions remain Dutch-owned.
 
-A Dutch-owned app-subject/profile-to-Member contract is still needed. Profile
-readiness never grants Ledger access. Historical Dutch and IAM design text that
-assigns Member mapping to UMS requires explicit owner reconciliation; this local
-implementation does not imply their acceptance or modify their working trees.
+The 2026-11-01 ownership decision keeps `ums.profile.state-changed.v1` UMS-owned
+and authoritative for profile lifecycle, and keeps
+`dutch.member-profile.mapping-changed.v1` Dutch-owned and internal. UMS W-8
+produces a Dutch-owned association report; it must not publish the Dutch mapping
+event or absorb Dutch Member IDs, placeholders, claims, canonicalization, or
+Ledger rules. The mapping's `profileState`/`lifecycleState` are non-authoritative
+projections of UMS state. Record: `capabilities/work/decisions/onboarding-contract-ownership.yaml`.
+
+Profile readiness never grants Ledger access.
 
 The [local consumer journey](dutch-consumer-journey.md) connects these application
 seams to a test-only product consumer; real provider acceptance remains separate.
@@ -44,8 +54,11 @@ seams to a test-only product consumer; real provider acceptance remains separate
 
 - Accepted IAM app/resource registrations, subject mapping, producer authority,
   token kind/audience/security-version and workload/delegation validation.
-- Running IAM onboarding producer and authenticated transport, bounded retry,
-  delivery and gap-repair behavior.
+- IAM deployment bindings: production outbox transport, workload/mTLS
+  authentication, relay scheduling, snapshot rate limiting, bounded retry,
+  delivery and gap-repair behavior, with named provider acceptance.
+- IAM W-13 is gated by `ums/W-18` and the UMS Slice C provider gates; reference
+  adapter tests do not close it.
 - Accepted lifecycle/snapshot semantics, including activation changes and
   privacy-safe recovery.
 - Dutch-owned Member mapping and protected display/status clients, with the
