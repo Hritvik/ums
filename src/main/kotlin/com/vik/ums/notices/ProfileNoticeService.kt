@@ -39,72 +39,105 @@ class ProfileNoticeService(
                 ?: return@execute NoticeClass.entries.map { NoticeResult(NoticeOutcome.UNAVAILABLE, it) }
             val state = bindings.binding(scope)
                 ?: return@execute NoticeClass.entries.map { NoticeResult(NoticeOutcome.UNAVAILABLE, it) }
-            if (state.lifecycle != Lifecycle.CLOSED) {
+            val deadline = bindings.closureDeadline(scope)
+            val closureReference = bindings.closureReference(scope)
+            if (state.lifecycle != Lifecycle.CLOSED || deadline == null || closureReference == null) {
                 return@execute NoticeClass.entries.map { NoticeResult(NoticeOutcome.NOT_CLOSED, it) }
             }
-            val deadline = bindings.closureDeadline(scope)
-                ?: return@execute NoticeClass.entries.map { NoticeResult(NoticeOutcome.NOT_CLOSED, it) }
             val now = clock.instant().truncatedTo(ChronoUnit.MICROS)
-            NoticeClass.entries.map { noticeClass -> scheduleOne(scope, noticeClass, deadline, now, correlationId) }
+            NoticeClass.entries.map { noticeClass ->
+                scheduleOne(scope, closureReference, noticeClass, deadline, now, correlationId)
+            }
         }!!
     }
 
+    /** One intent per class and closure instance, so a re-closed profile gets fresh notices. */
     private fun scheduleOne(
-        scope: ProfileScope, noticeClass: NoticeClass, deadline: Instant,
+        scope: ProfileScope, closureReference: UUID, noticeClass: NoticeClass, deadline: Instant,
         now: Instant, correlationId: String,
     ): NoticeResult {
-        val dedupe = dedupeIdentity(scope, noticeClass, deadline)
-        persistence.findByDedupe(scope, dedupe)?.let {
-            return NoticeResult(NoticeOutcome.ALREADY_QUEUED, noticeClass, it, deadline)
+        val dedupe = dedupeIdentity(scope, noticeClass, closureReference)
+        persistence.findByDedupe(scope, dedupe)?.let { existing ->
+            val outcome = if (existing.state == NoticeState.WINDOW_PASSED) NoticeOutcome.WINDOW_PASSED
+            else NoticeOutcome.ALREADY_QUEUED
+            return NoticeResult(outcome, noticeClass, existing.reference, deadline)
         }
-        // A closure observed late never shifts the window; a past window is reported, not recreated.
-        if (!now.isBefore(deadline.minusSeconds(noticeClass.windowDays * 86_400)))
-            return NoticeResult(NoticeOutcome.WINDOW_PASSED, noticeClass, deadline = deadline)
+        // A closure observed after its window start never shifts the window: the notice is
+        // recorded as passed so operators can see the missed obligation rather than silence.
+        if (now.isAfter(deadline.minusSeconds(noticeClass.windowDays * 86_400))) {
+            val reference = UUID.randomUUID()
+            persistence.insert(scope, reference, noticeClass, deadline, dedupe, NoticeState.WINDOW_PASSED, now, closureReference)
+            appendNoticeFact(jdbc, mapper, environment, scope, reference, noticeClass, deadline, dedupe,
+                NoticeState.WINDOW_PASSED, 1, correlationId, now)
+            return NoticeResult(NoticeOutcome.WINDOW_PASSED, noticeClass, reference, deadline)
+        }
 
         val reference = UUID.randomUUID()
-        persistence.insert(scope, reference, noticeClass, deadline, dedupe, now)
-        val payload = mapper.writeValueAsString(mapOf(
-            "noticeReference" to reference, "schemaVersion" to "1", "type" to "ums.profile.notice-intent.v1",
-            "producer" to "ums", "environment" to environment, "occurredAt" to now.toString(),
-            "correlationId" to correlationId, "scope" to scope, "noticeClass" to noticeClass.name,
-            "deadline" to deadline.toString(), "dedupeIdentity" to dedupe, "state" to "QUEUED",
-        ))
-        val streamId = "${scope.issuerEnvironmentRef}:${scope.appReference}:${scope.subjectReference}:notice"
-        persistence.appendIntent(scope.appReference.toString(), streamId, reference, payload, now)
+        persistence.insert(scope, reference, noticeClass, deadline, dedupe, NoticeState.QUEUED, now, closureReference)
+        appendNoticeFact(jdbc, mapper, environment, scope, reference, noticeClass, deadline, dedupe,
+            NoticeState.QUEUED, 1, correlationId, now)
         return NoticeResult(NoticeOutcome.QUEUED, noticeClass, reference, deadline)
     }
 
-    fun markHandedOff(authority: TrustedNoticeAuthority, scope: ProfileScope, reference: UUID) =
-        transition(authority, scope, reference, setOf(NoticeState.QUEUED, NoticeState.FAILED),
-            NoticeState.HANDED_OFF, "handed_off_at")
-
-    fun acknowledge(authority: TrustedNoticeAuthority, scope: ProfileScope, reference: UUID) =
-        transition(authority, scope, reference, setOf(NoticeState.HANDED_OFF), NoticeState.ACKNOWLEDGED,
-            "acknowledged_at")
-
-    fun fail(authority: TrustedNoticeAuthority, scope: ProfileScope, reference: UUID, failureClass: String) {
-        require(failureClass.matches(Regex("[a-z0-9._-]{1,64}"))) { "Failure class is not a safe code" }
-        transition(authority, scope, reference, setOf(NoticeState.QUEUED, NoticeState.HANDED_OFF),
-            NoticeState.FAILED, "handed_off_at", failureClass)
+    fun markHandedOff(authority: TrustedNoticeAuthority, scope: ProfileScope, reference: UUID, correlationId: String) {
+        val stored = requireTransition(authority, scope, reference)
+        require(stored.state in setOf(NoticeState.QUEUED, NoticeState.FAILED)) {
+            "Notice transition is not allowed from ${stored.state}"
+        }
+        apply(scope, stored, NoticeState.HANDED_OFF, "handed_off_at", correlationId)
     }
 
-    private fun transition(
-        authority: TrustedNoticeAuthority, scope: ProfileScope, reference: UUID,
-        from: Set<NoticeState>, to: NoticeState, column: String, failureClass: String? = null,
-    ) {
+    /** A late delivery after suppression is recorded, not turned into a permanent adapter error. */
+    fun acknowledge(authority: TrustedNoticeAuthority, scope: ProfileScope, reference: UUID, correlationId: String) {
+        val stored = requireTransition(authority, scope, reference)
+        require(stored.state in setOf(NoticeState.HANDED_OFF, NoticeState.SUPPRESSED)) {
+            "Notice transition is not allowed from ${stored.state}"
+        }
+        val late = stored.state == NoticeState.SUPPRESSED
+        apply(scope, stored, NoticeState.ACKNOWLEDGED, "acknowledged_at", correlationId, lateAfterSuppression = late)
+    }
+
+    fun fail(authority: TrustedNoticeAuthority, scope: ProfileScope, reference: UUID,
+             failureClass: String, correlationId: String) {
+        require(failureClass in SAFE_FAILURE_CLASSES) { "Failure class is not a known safe code" }
+        val stored = requireTransition(authority, scope, reference)
+        require(stored.state in setOf(NoticeState.QUEUED, NoticeState.HANDED_OFF)) {
+            "Notice transition is not allowed from ${stored.state}"
+        }
+        apply(scope, stored, NoticeState.FAILED, "failed_at", correlationId, failureClass = failureClass)
+    }
+
+    private fun requireTransition(authority: TrustedNoticeAuthority, scope: ProfileScope, reference: UUID): StoredNotice {
         require(authority.app == scope.application()) { "Notice authority is outside the profile application" }
+        val stored = persistence.find(scope, reference) ?: throw IllegalStateException("Notice intent is unavailable")
+        return stored
+    }
+
+    private fun apply(
+        scope: ProfileScope, stored: StoredNotice, to: NoticeState, column: String, correlationId: String,
+        failureClass: String? = null, lateAfterSuppression: Boolean = false,
+    ) {
         transactions.executeWithoutResult {
             lockedPolicy(jdbc, mapper, scope.application()) ?: throw IllegalStateException("Application is not registered")
-            val stored = persistence.find(scope, reference) ?: throw IllegalStateException("Notice intent is unavailable")
-            require(stored.state in from) { "Notice transition is not allowed from ${stored.state}" }
-            require(persistence.transition(scope, reference, from, to, column, clock.instant(), failureClass))
+            val now = clock.instant().truncatedTo(ChronoUnit.MICROS)
+            val revision = persistence.transition(scope, stored.reference, setOf(stored.state), to, column, now,
+                failureClass, lateAfterSuppression) ?: throw IllegalStateException("Notice state changed concurrently")
+            appendNoticeFact(jdbc, mapper, environment, scope, stored.reference, stored.noticeClass, stored.deadline,
+                dedupeIdentity(scope, stored.noticeClass, stored.closureReference), to, revision,
+                correlationId, now)
         }
     }
 
-    /** Bound to the closure instance, so a profile closed again after reactivation gets fresh notices. */
-    private fun dedupeIdentity(scope: ProfileScope, noticeClass: NoticeClass, deadline: Instant): String =
+    /** Dedupe identity is bound to the closure instance, not only to the class and deadline. */
+    private fun dedupeIdentity(scope: ProfileScope, noticeClass: NoticeClass, closureReference: UUID): String =
         MessageDigest.getInstance("SHA-256").digest(
             mapper.writeValueAsBytes(listOf(scope.issuerEnvironmentRef.toString(), scope.appReference.toString(),
-                scope.subjectReference.toString(), noticeClass.name, deadline.toString())))
+                scope.subjectReference.toString(), noticeClass.name, closureReference.toString())))
             .joinToString("") { "%02x".format(it) }
+
+    private companion object {
+        val SAFE_FAILURE_CLASSES = setOf(
+            "ADAPTER_UNAVAILABLE", "INVALID_RECIPIENT", "POLICY_REJECTED", "QUOTA_EXCEEDED", "UNKNOWN",
+        )
+    }
 }

@@ -26,6 +26,10 @@ import java.time.Instant
 import java.time.ZoneId
 import java.time.ZoneOffset
 import java.util.UUID
+import java.util.concurrent.Callable
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
 import javax.sql.DataSource
 
 @Testcontainers
@@ -47,7 +51,7 @@ class ProfileExpiryTest {
         val ds: DataSource = DriverManagerDataSource(postgres.jdbcUrl, postgres.username, postgres.password)
         Flyway.configure().dataSource(ds).load().migrate()
         jdbc = JdbcTemplate(ds)
-        jdbc.execute("""truncate ums_profile_expiry_fences, ums_profile_lifecycle_evidence, ums_profile_erasure_fences,
+        jdbc.execute("""truncate ums_profile_erasure_obligations, ums_profile_lifecycle_evidence,
             ums_profile_privacy_audit, ums_profile_privacy_receipts, ums_profile_deletion_requests,
             ums_profile_deletion_causes, ums_iam_activation_owners, ums_iam_onboarding_receipts,
             ums_iam_subject_mappings, ums_iam_app_mappings, ums_iam_source_bindings, ums_profile_patch_receipts,
@@ -92,11 +96,13 @@ class ProfileExpiryTest {
             .forEach { assertThat(row[it]).describedAs(it).isNull() }
         assertThat(row["closure_present"]).isEqualTo(false)
 
-        val fence = jdbc.queryForMap("select * from ums_profile_expiry_fences")
+        val fence = jdbc.queryForMap("select * from ums_profile_erasure_obligations")
+        assertThat(fence["obligation_kind"]).isEqualTo("CLOSURE_EXPIRY")
         assertThat(fence["erased_binding_revision"]).isEqualTo(4L)
         assertThat(fence["retired_generation"]).isEqualTo(1L)
-        assertThat(fence["closure_at"]).isEqualTo(java.sql.Timestamp.from(closedAt))
+        assertThat(fence["obligation_at"]).isEqualTo(java.sql.Timestamp.from(closedAt))
         assertThat(fence["subject_reference"]).isEqualTo(scope.subjectReference)
+        assertThat(fence["superseded_causes"].toString()).isEqualTo("[]")
 
         val actions = jdbc.queryForList("select action from ums_profile_lifecycle_evidence order by action", String::class.java)
         assertThat(actions).containsExactly("CLOSED", "EXPIRED")
@@ -138,7 +144,7 @@ class ProfileExpiryTest {
         assertThat(expiry.expire(expiryFact()).outcome).isEqualTo(ExpiryOutcome.SKIPPED)
         assertThat(jdbc.queryForObject("select lifecycle from ums_profile_bindings", String::class.java))
             .isEqualTo("DELETION_PENDING")
-        assertThat(jdbc.queryForObject("select count(*) from ums_profile_expiry_fences", Int::class.java)).isZero()
+        assertThat(jdbc.queryForObject("select count(*) from ums_profile_erasure_obligations", Int::class.java)).isZero()
         assertThat(eventCount()).isEqualTo(3)
     }
 
@@ -158,9 +164,11 @@ class ProfileExpiryTest {
         val event = event(5)
         assertThat(event["reason"].asText()).isEqualTo("ERASED")
         assertThat(event["state"]["deletionCauses"].isEmpty).isTrue()
-        // The pending request is superseded, not reported as completed or cancelled.
+        // The pending request becomes terminal and reports the truth without claiming completion.
         assertThat(jdbc.queryForObject("select status from ums_profile_deletion_requests", String::class.java))
-            .isEqualTo("PENDING")
+            .isEqualTo("SUPERSEDED")
+        val superseded = jdbc.queryForMap("select superseded_causes from ums_profile_erasure_obligations")
+        assertThat(superseded["superseded_causes"].toString()).contains("APP_ONLY")
     }
 
     @Test fun `a reactivated profile is not expired`() {
@@ -182,11 +190,78 @@ class ProfileExpiryTest {
 
         assertThat(expiry.expire(expiryFact()).outcome).isEqualTo(ExpiryOutcome.SKIPPED)
         assertThat(eventCount()).isEqualTo(events)
-        assertThat(jdbc.queryForObject("select count(*) from ums_profile_expiry_fences", Int::class.java)).isEqualTo(1)
+        assertThat(jdbc.queryForObject("select count(*) from ums_profile_erasure_obligations", Int::class.java)).isEqualTo(1)
 
         val absent = ProfileScope(app.issuerEnvironmentRef, app.appReference, UUID.randomUUID())
         assertThat(expiry.expire(expiryFact(absent)).outcome).isEqualTo(ExpiryOutcome.UNAVAILABLE)
         assertThat(eventCount()).isEqualTo(events)
+    }
+
+    @Test fun `an avatar association blocks expiry instead of dropping the pointer`() {
+        close()
+        jdbc.update("update ums_profile_bindings set avatar_reference = 'opaque-avatar-reference'")
+        clock.advance(Duration.ofDays(90))
+
+        assertThat(expiry.expire(expiryFact()).outcome).isEqualTo(ExpiryOutcome.CONTENT_BLOCKED)
+        assertThat(jdbc.queryForObject("select lifecycle from ums_profile_bindings", String::class.java))
+            .isEqualTo("CLOSED")
+        assertThat(jdbc.queryForObject("select avatar_reference from ums_profile_bindings", String::class.java))
+            .isEqualTo("opaque-avatar-reference")
+        assertThat(jdbc.queryForObject("select count(*) from ums_profile_erasure_obligations", Int::class.java)).isZero()
+    }
+
+    @Test fun `a superseded request reports terminal status without claiming completion`() {
+        close()
+        clock.advance(Duration.ofDays(80))
+        val actor = TrustedPrivacyAuthority(scope, UUID.randomUUID(), PrivacyPurpose.REQUEST_DELETION,
+            clock.instant(), true, clock.instant().plus(Duration.ofMinutes(10)))
+        val accepted = deletion.request(actor, DeletionRequestCommand(UUID.randomUUID(), 3, "privacy"))
+        clock.advance(Duration.ofDays(10))
+        expiry.expire(expiryFact())
+
+        val status = deletion.status(TrustedPrivacyAuthority(scope, UUID.randomUUID(),
+            PrivacyPurpose.READ_DELETION_STATUS, clock.instant(), true,
+            clock.instant().plus(Duration.ofMinutes(10))), accepted.operationReference)
+
+        assertThat(status.status).isEqualTo("SUPERSEDED")
+        assertThat(status.cancellationEligible).isFalse()
+        assertThat(Instant.parse(status.deadline))
+            .isEqualTo(Instant.parse(status.acceptedAt).plus(Duration.ofDays(30)))
+    }
+
+    @Test fun `reactivation and expiry serialize without resurrecting or double erasing`() {
+        close()
+        clock.advance(Duration.ofDays(90))
+        val start = CountDownLatch(1)
+        val pool = Executors.newFixedThreadPool(2)
+        try {
+            val expire = pool.submit(Callable { start.await(); expiry.expire(expiryFact()).outcome })
+            val reactivate = pool.submit(Callable {
+                start.await()
+                reactivation.reactivate(TrustedReactivationFact(scope, UUID.randomUUID(), "lifecycle")).outcome
+            })
+            start.countDown()
+            val expired = expire.get(30, TimeUnit.SECONDS)
+            val reopened = reactivate.get(30, TimeUnit.SECONDS)
+            val lifecycle = jdbc.queryForObject("select lifecycle from ums_profile_bindings", String::class.java)
+            when {
+                expired == ExpiryOutcome.EXPIRED -> {
+                    assertThat(lifecycle).isEqualTo("ERASED")
+                    assertThat(reopened).isEqualTo(ReactivationOutcome.UNAVAILABLE)
+                    assertThat(jdbc.queryForObject("select count(*) from ums_profile_erasure_obligations",
+                        Int::class.java)).isEqualTo(1)
+                }
+                else -> {
+                    assertThat(expired).isEqualTo(ExpiryOutcome.SKIPPED)
+                    assertThat(lifecycle).isEqualTo("ACTIVE")
+                    assertThat(jdbc.queryForObject("select count(*) from ums_profile_erasure_obligations",
+                        Int::class.java)).isZero()
+                }
+            }
+        } finally {
+            pool.shutdownNow()
+        }
+        assertThat(eventCount()).isLessThanOrEqualTo(4)
     }
 
     private fun eventCount(): Int =

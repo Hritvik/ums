@@ -39,6 +39,16 @@ class EmittedNotices(unittest.TestCase):
         for key in ('email', 'phone', 'displayName', 'channel', 'message', 'body', 'deliveryAddress'):
             self.assertNotIn(key, intent)
 
+    def test_persisted_suppression_fact(self):
+        intent = self.artifact('notice-suppressed-producer.json', 'notice-intent.json')
+        self.assertEqual(intent['state'], 'SUPPRESSED')
+        self.assertEqual(intent['producer'], 'ums')
+        self.assertGreater(int(intent['noticeRevision']), 1)
+        self.assertRegex(intent['dedupeIdentity'], re.compile(r'^[a-f0-9]{64}$'))
+        # The owner can see the withdrawal, so it can stop a queued delivery.
+        for key in ('email', 'phone', 'channel', 'message', 'body'):
+            self.assertNotIn(key, intent)
+
     def test_dedupe_identity_is_class_and_closure_bound(self):
         intent = self.artifact('notice-intent-producer.json', 'notice-intent.json')
         self.assertEqual(len(intent['dedupeIdentity']), 64)

@@ -11,6 +11,7 @@ import org.springframework.transaction.support.TransactionTemplate
 import java.time.Clock
 import java.time.Duration
 import java.time.temporal.ChronoUnit
+import java.util.UUID
 
 /**
  * Local lifecycle seam for app departure. No HTTP ingress or accepted IAM departure
@@ -50,7 +51,8 @@ class ProfileClosureService(
             return@execute ClosureResult(outcome, current, recorded.retainUntil)
         }
 
-        if (persistence.closeActive(fact.scope, closedAt, retainUntil)) {
+        val closureReference = UUID.randomUUID()
+        if (persistence.closeActive(fact.scope, closedAt, retainUntil, closureReference)) {
             val after = bindings.binding(fact.scope)!!
             persistence.recordEvidence(fact.scope, "CLOSED", after.bindingRevision.toLong(), closedAt, retainUntil,
                 clock.instant(), fact.eventId, fact.correlationId)
@@ -60,7 +62,7 @@ class ProfileClosureService(
 
         // A deletion cause already restricts this profile. Retention is independent evidence:
         // it never changes lifecycle, revision, readiness, or the emitted stream.
-        persistence.recordRetention(fact.scope, closedAt, retainUntil)
+        persistence.recordRetention(fact.scope, closedAt, retainUntil, closureReference)
         persistence.recordEvidence(fact.scope, "CLOSED", current.bindingRevision.toLong(), closedAt, retainUntil,
             clock.instant(), fact.eventId, fact.correlationId)
         ClosureResult(ClosureOutcome.RESTRICTED_RETAINED, current, retainUntil)

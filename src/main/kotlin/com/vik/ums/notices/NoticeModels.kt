@@ -13,7 +13,7 @@ enum class NoticeClass(val windowDays: Long) {
     CLOSURE_EXPIRY_7_DAY(7),
 }
 
-enum class NoticeState { QUEUED, HANDED_OFF, ACKNOWLEDGED, FAILED, SUPPRESSED }
+enum class NoticeState { QUEUED, HANDED_OFF, ACKNOWLEDGED, FAILED, SUPPRESSED, WINDOW_PASSED }
 
 enum class NoticeOutcome {
     QUEUED,
@@ -43,4 +43,5 @@ internal data class StoredNotice(
     val noticeClass: NoticeClass,
     val deadline: Instant,
     val state: NoticeState,
+    val closureReference: UUID,
 )

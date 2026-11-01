@@ -43,7 +43,7 @@ class ProfileFinalizationTest {
         val ds = DriverManagerDataSource(postgres.jdbcUrl, postgres.username, postgres.password)
         Flyway.configure().dataSource(ds).load().migrate()
         jdbc = JdbcTemplate(ds)
-        jdbc.execute("""truncate ums_profile_erasure_fences, ums_profile_privacy_audit, ums_profile_privacy_receipts, ums_profile_deletion_requests,
+        jdbc.execute("""truncate ums_profile_erasure_obligations, ums_profile_privacy_audit, ums_profile_privacy_receipts, ums_profile_deletion_requests,
             ums_profile_deletion_causes, ums_iam_activation_owners, ums_iam_onboarding_receipts, ums_iam_subject_mappings,
             ums_iam_app_mappings, ums_iam_source_bindings, ums_profile_patch_receipts, ums_event_inbox, ums_event_outbox,
             ums_profile_bindings, ums_input_checkpoints, ums_profile_policies""")
@@ -98,7 +98,7 @@ class ProfileFinalizationTest {
         jdbc.update("update ums_profile_bindings set avatar_reference='seeded-provider-asset'")
         assertThatThrownBy { finish(accepted.operationReference) }.isInstanceOf(IllegalStateException::class.java)
         assertThat(jdbc.queryForObject("select status from ums_profile_deletion_requests", String::class.java)).isEqualTo("PENDING")
-        assertThat(jdbc.queryForObject("select count(*) from ums_profile_erasure_fences", Long::class.java)).isZero()
+        assertThat(jdbc.queryForObject("select count(*) from ums_profile_erasure_obligations", Long::class.java)).isZero()
         assertThat(jdbc.queryForObject("select avatar_reference from ums_profile_bindings", String::class.java)).isEqualTo("seeded-provider-asset")
     }
 
@@ -129,7 +129,7 @@ class ProfileFinalizationTest {
             assertThat(jdbc.queryForObject("select lifecycle from ums_profile_bindings", String::class.java)).isEqualTo("DELETION_PENDING")
             assertThat(jdbc.queryForObject("select status from ums_profile_deletion_requests", String::class.java)).isEqualTo("PENDING")
             assertThat(jdbc.queryForObject("select count(*) from ums_profile_deletion_causes", Long::class.java)).isEqualTo(1)
-            assertThat(jdbc.queryForObject("select count(*) from ums_profile_erasure_fences", Long::class.java)).isZero()
+            assertThat(jdbc.queryForObject("select count(*) from ums_profile_erasure_obligations", Long::class.java)).isZero()
             assertThat(jdbc.queryForObject("select count(*) from ums_profile_privacy_audit", Long::class.java)).isEqualTo(1)
         } finally { jdbc.execute("alter table ums_event_outbox drop constraint finalization_outbox_failure") }
         assertThat(finish(accepted.operationReference).status).isEqualTo("LOCAL_COMPLETED")
@@ -148,7 +148,7 @@ class ProfileFinalizationTest {
             )).map { it.get() }
             assertThat(results.count { it.isSuccess }).isEqualTo(2)
             assertThat(results.count { it.exceptionOrNull() is IllegalStateException }).isEqualTo(1)
-            assertThat(jdbc.queryForObject("select count(*) from ums_profile_erasure_fences", Long::class.java)).isEqualTo(1)
+            assertThat(jdbc.queryForObject("select count(*) from ums_profile_erasure_obligations", Long::class.java)).isEqualTo(1)
             assertThat(jdbc.queryForObject("select count(*) from ums_event_outbox where stream_revision=3", Long::class.java)).isEqualTo(1)
         } finally { pool.shutdownNow() }
     }
@@ -195,7 +195,7 @@ class ProfileFinalizationTest {
         assertThat(finish(accepted.operationReference).status).isEqualTo("LOCAL_COMPLETED")
         assertThat(jdbc.queryForObject("select closure_present from ums_profile_bindings", Boolean::class.java)).isFalse()
         assertThat(jdbc.queryForObject("select count(*) from ums_profile_deletion_causes", Long::class.java)).isZero()
-        jdbc.update("update ums_profile_erasure_fences set retired_generation=99")
+        jdbc.update("update ums_profile_erasure_obligations set retired_generation=99")
         assertThatThrownBy { finish(accepted.operationReference) }.isInstanceOf(IllegalStateException::class.java)
         assertThatThrownBy { deletion.status(human(PrivacyPurpose.READ_DELETION_STATUS), accepted.operationReference) }
             .isInstanceOf(IllegalStateException::class.java)

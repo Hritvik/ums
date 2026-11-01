@@ -48,8 +48,12 @@
         "HANDED_OFF",
         "ACKNOWLEDGED",
         "FAILED",
-        "SUPPRESSED"
+        "SUPPRESSED",
+        "WINDOW_PASSED"
       ]
+    },
+    "noticeRevision": {
+      "$ref": "common.json#/$defs/version"
     }
   },
   "required": [
@@ -64,7 +68,8 @@
     "noticeClass",
     "deadline",
     "dedupeIdentity",
-    "state"
+    "state",
+    "noticeRevision"
   ],
   "additionalProperties": false
 }

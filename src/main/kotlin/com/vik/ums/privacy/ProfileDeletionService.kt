@@ -1,6 +1,7 @@
 package com.vik.ums.privacy
 
 import com.fasterxml.jackson.databind.ObjectMapper
+import com.vik.ums.notices.suppressNotices
 import com.vik.ums.profiles.*
 import org.springframework.jdbc.core.JdbcTemplate
 import org.springframework.transaction.support.TransactionTemplate
@@ -13,7 +14,7 @@ import java.util.UUID
 /** Local purpose-bound privacy seam. No ingress or production IAM privacy authority is wired. */
 class ProfileDeletionService(
     private val jdbc: JdbcTemplate, private val transactions: TransactionTemplate, private val mapper: ObjectMapper,
-    environment: String, private val clock: Clock, private val maximumStrongAge: Duration,
+    private val environment: String, private val clock: Clock, private val maximumStrongAge: Duration,
 ) {
     private val bindings = ProfilePersistence(jdbc)
     private val fields = ProfileFieldsPersistence(jdbc)
@@ -31,6 +32,8 @@ class ProfileDeletionService(
         val reference = UUID.randomUUID()
         val acceptedAt = now.truncatedTo(java.time.temporal.ChronoUnit.MICROS)
         persistence.accept(before, reference, acceptedAt, acceptedAt.plus(Duration.ofDays(30)))
+        // An earlier deletion obligation supersedes the retention schedule it was built on.
+        suppressNotices(jdbc, mapper, environment, authority.scope, command.correlationId, now)
         val after = current(authority.scope)
         val result = PrivacyAccepted(reference, "1")
         persistence.record(authority, command.idempotencyKey, fingerprint, after, result, now, command.correlationId)
@@ -68,6 +71,8 @@ class ProfileDeletionService(
         val (policy, now) = authorize(authority, PrivacyPurpose.READ_DELETION_STATUS)
         val state = bindings.binding(authority.scope) ?: throw IllegalStateException("Profile is unavailable")
         val request = persistence.request(authority.scope, reference)
+        if (request.status == "SUPERSEDED") return@execute DeletionRequestStatus(reference, request.revision,
+            state.bindingRevision, "SUPERSEDED", request.acceptedAt.toString(), request.deadline.toString(), false)
         if (state.lifecycle == Lifecycle.ERASED) {
             check(persistence.completedFence(authority.scope, request, state)) { "Deletion status is unavailable" }
         } else requireGeneration(state, request)

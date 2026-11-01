@@ -93,19 +93,30 @@ edits, closure, reactivation, deletion, or finalization. Because the obligation
 was accepted while the app was adopted, expiry does not require adoption to
 remain enabled; only the registered policy row is required for serialization.
 
+Erasure is refused while an avatar association exists. The sibling finalizer
+already refused in that case, and expiry must not become a way to drop the only
+pointer to a provider asset without the content owner's cleanup. The result is
+reported as content-blocked rather than silently skipped.
+
 Erasure clears exactly the fields the deletion finalizer clears and publishes the
 same `ERASED` event, so consumers see one tombstone shape regardless of which
-obligation expired. The fence differs by obligation: the deletion fence is keyed
-to a deletion request row, so expiry records its own fence carrying the retired
-profile reference, generation, closure time, and erased binding revision.
-Repeated expiry finds an already erased profile, skips, and emits nothing.
+obligation expired. Every obligation now writes one unified erasure fence carrying
+the obligation kind, an optional cause reference, the retired profile reference
+and generation, the obligation time, the erased revision, and the causes it
+superseded. Repeated expiry finds an already erased profile, skips, and emits
+nothing.
+
+When expiry supersedes a pending app-only request, that request becomes
+`SUPERSEDED`: terminal, never selected for processing again, and never reported as
+completed or cancelled. The superseded causes are recorded on the fence so the
+IAM-global obligation is not lost from the audit trail.
 
 ## Recorded verification
 
 On 31 October 2026, `./gradlew clean check bootJar --no-daemon --console=plain`
 passed with the JDK 21 and Colima settings in [foundation](foundation.md):
-122 JVM tests, zero failures/errors/skips, seven contract-suite tests, and
-twenty-one producer/input checks. JaCoCo reported 98.8% line and 84.4% branch
+129 JVM tests, zero failures/errors/skips, seven contract-suite tests, and
+twenty-two producer/input checks. JaCoCo reported 98.4% line and 84.3% branch
 coverage without exclusions. Contract checks include 70 UMS fixtures and the
 pinned IAM artifact validation.
 
@@ -114,10 +125,12 @@ the retry with the same authoritative time, a conflicting time, concurrent
 closure, closure during a pending deletion, and unavailable profiles. Five
 reactivation tests cover the reopen and readiness recomputation, the deadline
 boundary, deletion and erasure refusal, absent, de-adopted, and legacy-closure
-refusal, and a repeated command. Six expiry tests cover erasure at the deadline
+refusal, and a repeated command. Nine expiry tests cover erasure at the deadline
 with its fence and evidence, the not-due boundary, an earlier independent
-deletion obligation, a later deletion that cannot extend retention, a reactivated
-generation, and repeated or unrelated invocations.
+deletion obligation, a later deletion that cannot extend retention and its
+`SUPERSEDED` request, a reactivated generation, repeated or unrelated
+invocations, an avatar association that blocks erasure, a superseded request
+status read, and a reactivation-versus-expiry race.
 Actual persisted event and status JSON are validated against the published
 schemas by producer checks, including the absence of display values in every
 event.

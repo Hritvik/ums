@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://ums.invalid/contracts/v1/deletion-request-status.json",
   "title": "Restricted app-only deletion request status",
-  "description": "PENDING does not mean erased; LOCAL_COMPLETED means only local UMS-owned fields/derived data erased, never downstream acknowledgement or whole-product erasure. Eligibility uses authoritative time/current authority.",
+  "description": "PENDING does not mean erased; LOCAL_COMPLETED means only local UMS-owned fields/derived data erased, never downstream acknowledgement or whole-product erasure. SUPERSEDED means another obligation erased the profile first, so this request can never complete. Eligibility uses authoritative time/current authority.",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -25,7 +25,8 @@
       "enum": [
         "PENDING",
         "CANCELLED",
-        "LOCAL_COMPLETED"
+        "LOCAL_COMPLETED",
+        "SUPERSEDED"
       ]
     },
     "acceptedAt": {
@@ -49,7 +50,8 @@
           "status": {
             "enum": [
               "CANCELLED",
-              "LOCAL_COMPLETED"
+              "LOCAL_COMPLETED",
+              "SUPERSEDED"
             ]
           }
         }

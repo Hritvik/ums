@@ -353,5 +353,10 @@
     "file": "notice-intent.json",
     "schema": "notice-intent.json",
     "valid": true
+  },
+  {
+    "file": "deletion-status-superseded.json",
+    "schema": "deletion-request-status.json",
+    "valid": true
   }
 ]

@@ -36,7 +36,7 @@ class LocalConsumerJourneyTest {
         val ds = DriverManagerDataSource(postgres.jdbcUrl, postgres.username, postgres.password)
         Flyway.configure().dataSource(ds).load().migrate()
         jdbc = JdbcTemplate(ds)
-        jdbc.execute("""truncate ums_profile_erasure_fences, ums_profile_privacy_audit, ums_profile_privacy_receipts, ums_profile_deletion_requests, ums_profile_deletion_causes, ums_iam_activation_owners, ums_iam_onboarding_receipts, ums_iam_subject_mappings,
+        jdbc.execute("""truncate ums_profile_erasure_obligations, ums_profile_privacy_audit, ums_profile_privacy_receipts, ums_profile_deletion_requests, ums_profile_deletion_causes, ums_iam_activation_owners, ums_iam_onboarding_receipts, ums_iam_subject_mappings,
             ums_iam_app_mappings, ums_iam_source_bindings, ums_profile_patch_receipts, ums_event_inbox, ums_event_outbox,
             ums_profile_bindings, ums_input_checkpoints, ums_profile_policies""")
         val tx = TransactionTemplate(DataSourceTransactionManager(ds))

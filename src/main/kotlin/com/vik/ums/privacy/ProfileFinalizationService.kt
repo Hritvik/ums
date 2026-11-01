@@ -1,7 +1,7 @@
 package com.vik.ums.privacy
 
 import com.fasterxml.jackson.databind.ObjectMapper
-import com.vik.ums.notices.NoticePersistence
+import com.vik.ums.notices.suppressNotices
 import com.vik.ums.profiles.*
 import org.springframework.jdbc.core.JdbcTemplate
 import org.springframework.transaction.support.TransactionTemplate
@@ -17,7 +17,7 @@ enum class MaintenancePurpose { FINALIZE_APP_DELETION }
 /** Local app-only finalization. Does not assert content cleanup, recovery durability or downstream completion. */
 class ProfileFinalizationService(
     private val jdbc: JdbcTemplate, private val transactions: TransactionTemplate, private val mapper: ObjectMapper,
-    environment: String, private val clock: Clock,
+    private val environment: String, private val clock: Clock,
 ) {
     private val bindings = ProfilePersistence(jdbc)
     private val persistence = PrivacyPersistence(jdbc)
@@ -49,7 +49,7 @@ class ProfileFinalizationService(
                 where issuer_environment_ref = ? and app_reference = ? and subject_reference = ?""", Boolean::class.java,
                 scope.issuerEnvironmentRef, scope.appReference, scope.subjectReference) == true, FinalizationBlockReason.CONTENT_AUTHORITY_UNAVAILABLE)
             erase(scope, request, before)
-            NoticePersistence(jdbc).suppress(scope, now)
+            suppressNotices(jdbc, mapper, environment, scope, correlationId, now)
             val after = bindings.binding(scope)!!
             audit(authority, request, after, now, correlationId)
             events.emit(after, "ERASED", reference, correlationId)
@@ -59,9 +59,18 @@ class ProfileFinalizationService(
 
     private fun erase(scope: ProfileScope, request: StoredDeletionRequest, before: BindingState) {
         val revision = Math.addExact(before.bindingRevision.toLong(), 1)
-        jdbc.update("""insert into ums_profile_erasure_fences values (?, ?, ?, ?, ?, ?, ?)""",
-            scope.issuerEnvironmentRef, scope.appReference, scope.subjectReference, request.reference,
-            request.profileReference, request.generation.toLong(), revision)
+        val superseded = mapper.writeValueAsString(listOfNotNull(
+            before.deletionCauses.iamGlobal?.let {
+                mapOf("type" to "IAM_GLOBAL", "reference" to it.requestReference.toString())
+            }))
+        jdbc.update("""insert into ums_profile_erasure_obligations
+            (fence_reference, issuer_environment_ref, app_reference, subject_reference, obligation_kind,
+             cause_reference, retired_profile_reference, retired_generation, obligation_at, superseded_causes,
+             erased_binding_revision, erased_at)
+            values (?, ?, ?, ?, 'APP_DELETION', ?, ?, ?, ?, ?::jsonb, ?, ?)""",
+            UUID.randomUUID(), scope.issuerEnvironmentRef, scope.appReference, scope.subjectReference,
+            request.reference, request.profileReference, request.generation.toLong(), Timestamp.from(request.acceptedAt),
+            superseded, revision, Timestamp.from(clock.instant()))
         jdbc.update("""delete from ums_profile_deletion_causes where issuer_environment_ref = ? and app_reference = ? and subject_reference = ?""",
             scope.issuerEnvironmentRef, scope.appReference, scope.subjectReference)
         jdbc.update("""update ums_profile_bindings set lifecycle='ERASED', readiness='PROFILE_REQUIRED', profile_reference=null,

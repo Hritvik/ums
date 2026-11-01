@@ -42,7 +42,7 @@ class DueDeletionBatchTest {
         val ds = DriverManagerDataSource(postgres.jdbcUrl, postgres.username, postgres.password)
         Flyway.configure().dataSource(ds).load().migrate()
         jdbc = JdbcTemplate(ds)
-        jdbc.execute("""truncate ums_profile_erasure_fences, ums_profile_privacy_audit, ums_profile_privacy_receipts,
+        jdbc.execute("""truncate ums_profile_erasure_obligations, ums_profile_privacy_audit, ums_profile_privacy_receipts,
             ums_profile_deletion_requests, ums_profile_deletion_causes, ums_iam_activation_owners, ums_iam_onboarding_receipts,
             ums_iam_subject_mappings, ums_iam_app_mappings, ums_iam_source_bindings, ums_profile_patch_receipts,
             ums_event_inbox, ums_event_outbox, ums_profile_bindings, ums_input_checkpoints, ums_profile_policies""")
@@ -52,7 +52,7 @@ class DueDeletionBatchTest {
         deletion = ProfileDeletionService(jdbc, transactions, mapper, "test", clock, Duration.ofMinutes(5))
         finalizer = ProfileFinalizationService(jdbc, transactions, mapper, "test", clock)
         batch = DueDeletionBatchService(jdbc, finalizer, clock)
-        jdbc.execute("drop trigger if exists batch_test_failure on ums_profile_erasure_fences")
+        jdbc.execute("drop trigger if exists batch_test_failure on ums_profile_erasure_obligations")
         jdbc.execute("drop function if exists batch_test_failure()")
     }
 
@@ -105,7 +105,7 @@ class DueDeletionBatchTest {
             assertThatThrownBy { batch.run(maintenance(), 10, null, "batch") }.isInstanceOf(DataIntegrityViolationException::class.java)
             assertThat(status(first.second)).isEqualTo("LOCAL_COMPLETED")
             assertThat(status(second.second)).isEqualTo("PENDING")
-            assertThat(jdbc.queryForObject("select count(*) from ums_profile_erasure_fences", Long::class.java)).isEqualTo(1)
+            assertThat(jdbc.queryForObject("select count(*) from ums_profile_erasure_obligations", Long::class.java)).isEqualTo(1)
         } finally { dropFailureTrigger() }
     }
 
@@ -159,7 +159,7 @@ class DueDeletionBatchTest {
         try {
             val runs = pool.invokeAll((1..2).map { Callable { batch.run(maintenance(), 100, null, "batch") } }).map { it.get() }
             assertThat(runs.flatMap { it.results }.map { it.outcome.name }).containsOnly("LOCAL_COMPLETED")
-            assertThat(jdbc.queryForObject("select count(*) from ums_profile_erasure_fences", Long::class.java)).isEqualTo(3)
+            assertThat(jdbc.queryForObject("select count(*) from ums_profile_erasure_obligations", Long::class.java)).isEqualTo(3)
             assertThat(jdbc.queryForObject("select count(*) from ums_event_outbox where event_type='ums.profile.state-changed.v1' and stream_revision=3", Long::class.java)).isEqualTo(3)
         } finally { pool.shutdownNow() }
     }
@@ -185,7 +185,7 @@ class DueDeletionBatchTest {
         val third = batch.run(maintenance(), 1, second.nextCursor, "batch")
         assertThat(listOf(first, second, third).flatMap { it.results }.map { it.requestReference }).containsExactlyElementsOf(expected)
         assertThat(third.nextCursor).isNull()
-        assertThat(jdbc.queryForObject("select count(*) from ums_profile_erasure_fences", Long::class.java)).isEqualTo(3)
+        assertThat(jdbc.queryForObject("select count(*) from ums_profile_erasure_obligations", Long::class.java)).isEqualTo(3)
     }
 
     private fun status(reference: UUID): String = jdbc.queryForObject(
@@ -193,12 +193,12 @@ class DueDeletionBatchTest {
     private fun failureTrigger(reference: UUID, code: String) {
         // Generated UUID and fixed SQLSTATE are test-controlled fault injection, never production input.
         jdbc.execute("""create function batch_test_failure() returns trigger language plpgsql as '
-            begin if new.request_reference = ''$reference''::uuid then
+            begin if new.obligation_kind = ''APP_DELETION'' and new.cause_reference = ''$reference''::uuid then
             raise exception ''sensitive-internal'' using errcode = ''$code''; end if; return new; end'""")
-        jdbc.execute("create trigger batch_test_failure before insert on ums_profile_erasure_fences for each row execute function batch_test_failure()")
+        jdbc.execute("create trigger batch_test_failure before insert on ums_profile_erasure_obligations for each row execute function batch_test_failure()")
     }
     private fun dropFailureTrigger() {
-        jdbc.execute("drop trigger batch_test_failure on ums_profile_erasure_fences")
+        jdbc.execute("drop trigger batch_test_failure on ums_profile_erasure_obligations")
         jdbc.execute("drop function batch_test_failure()")
     }
 

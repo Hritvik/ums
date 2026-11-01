@@ -68,6 +68,12 @@ internal class ProfilePersistence(private val jdbc: JdbcTemplate) {
         { rs, _ -> rs.getTimestamp(1)?.toInstant() },
         scope.issuerEnvironmentRef, scope.appReference, scope.subjectReference).singleOrNull()
 
+    /** Closure instance for this retained generation; a new closure after reactivation gets a new one. */
+    fun closureReference(scope: ProfileScope): UUID? = jdbc.query("""select closure_reference
+        from ums_profile_bindings where issuer_environment_ref = ? and app_reference = ? and subject_reference = ?""",
+        { rs, _ -> rs.getObject(1, UUID::class.java) },
+        scope.issuerEnvironmentRef, scope.appReference, scope.subjectReference).singleOrNull()
+
     fun fingerprint(producer: String, eventId: UUID): String? = jdbc.query(
         "select input_fingerprint from ums_event_inbox where producer = ? and event_id = ?",
         { rs, _ -> rs.getString(1) ?: "legacy-untrusted-event" }, producer, eventId).singleOrNull()

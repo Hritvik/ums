@@ -1,9 +1,10 @@
 package com.vik.ums.lifecycle
 
 import com.fasterxml.jackson.databind.ObjectMapper
-import com.vik.ums.notices.NoticePersistence
+import com.vik.ums.notices.suppressNotices
 import com.vik.ums.profiles.Lifecycle
 import com.vik.ums.profiles.ProfilePersistence
+import com.vik.ums.profiles.ProfileScope
 import com.vik.ums.profiles.ProfileStateEvents
 import com.vik.ums.profiles.Readiness
 import com.vik.ums.profiles.lockedPolicy
@@ -25,7 +26,7 @@ class ProfileExpiryService(
     private val jdbc: JdbcTemplate,
     private val transactions: TransactionTemplate,
     private val mapper: ObjectMapper,
-    environment: String,
+    private val environment: String,
     private val clock: Clock,
 ) {
     private val bindings = ProfilePersistence(jdbc)
@@ -44,6 +45,10 @@ class ProfileExpiryService(
             ?: return@execute ExpiryResult(ExpiryOutcome.SKIPPED, current)
         val retainUntil = recorded.retainUntil
             ?: return@execute ExpiryResult(ExpiryOutcome.SKIPPED, current)
+        val profileReference = current.profileReference
+            ?: return@execute ExpiryResult(ExpiryOutcome.SKIPPED, current)
+        val generation = current.generation
+            ?: return@execute ExpiryResult(ExpiryOutcome.SKIPPED, current)
         // The earliest irreversible deadline governs. A pending deletion that lands earlier
         // owns erasure even when its worker is late; a later one cannot extend retention.
         val earliestCause = listOfNotNull(current.deletionCauses.appOnly, current.deletionCauses.iamGlobal)
@@ -53,12 +58,30 @@ class ProfileExpiryService(
         val now = clock.instant().truncatedTo(ChronoUnit.MICROS)
         if (now.isBefore(retainUntil)) return@execute ExpiryResult(ExpiryOutcome.NOT_DUE, current)
 
+        // The sibling finalizer refuses to erase while a provider asset may still exist.
+        if (!contentAuthorized(fact.scope)) return@execute ExpiryResult(ExpiryOutcome.CONTENT_BLOCKED, current)
+
         val revision = Math.addExact(current.bindingRevision.toLong(), 1)
-        check(persistence.expireErased(fact.scope, revision)) { "Profile is no longer a retained generation" }
+        check(persistence.expireErased(fact.scope, revision, current.bindingRevision.toLong())) {
+            "Profile is no longer a retained generation"
+        }
+        val superseded = mapper.writeValueAsString(
+            listOfNotNull(
+                current.deletionCauses.appOnly?.let {
+                    mapOf("type" to "APP_ONLY", "reference" to it.requestReference.toString())
+                },
+                current.deletionCauses.iamGlobal?.let {
+                    mapOf("type" to "IAM_GLOBAL", "reference" to it.requestReference.toString())
+                },
+            ))
         persistence.clearCauses(fact.scope)
-        persistence.recordExpiryFence(fact.scope, current.profileReference!!, current.generation!!.toLong(),
-            recorded.closedAt, revision, now)
-        NoticePersistence(jdbc).suppress(fact.scope, now)
+        jdbc.update("""update ums_profile_deletion_requests set status = 'SUPERSEDED',
+            operation_revision = operation_revision + 1
+            where issuer_environment_ref = ? and app_reference = ? and subject_reference = ? and status = 'PENDING'""",
+            fact.scope.issuerEnvironmentRef, fact.scope.appReference, fact.scope.subjectReference)
+        persistence.recordErasedObligation(fact.scope, "CLOSURE_EXPIRY", null, profileReference,
+            generation.toLong(), recorded.closedAt, superseded, revision, now)
+        suppressNotices(jdbc, mapper, environment, fact.scope, fact.correlationId, now)
         persistence.recordEvidence(fact.scope, "EXPIRED", revision, now, null, now, fact.eventId, fact.correlationId)
 
         val after = bindings.binding(fact.scope)!!
@@ -66,4 +89,10 @@ class ProfileExpiryService(
         events.emit(after, "ERASED", fact.eventId, fact.correlationId)
         ExpiryResult(ExpiryOutcome.EXPIRED, after)
     }!!
+
+    /** False when an avatar association still exists, so erasure cannot drop the only pointer. */
+    private fun contentAuthorized(scope: ProfileScope): Boolean =
+        jdbc.queryForObject("""select avatar_reference is null from ums_profile_bindings
+            where issuer_environment_ref = ? and app_reference = ? and subject_reference = ?""",
+            Boolean::class.java, scope.issuerEnvironmentRef, scope.appReference, scope.subjectReference) == true
 }

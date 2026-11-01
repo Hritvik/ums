@@ -13,39 +13,53 @@ delivery state. The intent carries no contact detail, message body, or channel:
 the product or notice owner decides how to reach the person.
 
 The deduplication identity is bound to the closure instance, not only to the app,
-subject, and class. A profile that is closed again after reactivation therefore
-gets fresh intents, while retries for the same closure remain idempotent.
+subject, class, and deadline. A profile that is closed again after reactivation
+therefore gets fresh intents even when the authoritative closure time is
+identical, while retries for the same closure remain idempotent.
 
-A closure observed after a window start has already passed is reported as passed
-and never shifted. The retention deadline is read from the closure record and is
-never extended or recomputed by this service, so a late observation shortens the
-notice opportunity rather than the retention period.
+A closure observed after a window start has already passed records a terminal
+`WINDOW_PASSED` intent and publishes that fact, rather than shifting the window or
+leaving silence. The retention deadline is read from the closure record and is
+never extended or recomputed, so a late observation shortens the notice
+opportunity rather than the retention period.
+
+One fact is published per state change: `QUEUED`, `HANDED_OFF`, `ACKNOWLEDGED`,
+`FAILED`, `SUPPRESSED`, and `WINDOW_PASSED`, each carrying an incrementing notice
+revision. The notice owner can therefore see a withdrawal and stop a queued
+delivery, instead of delivering a notice for data that was already erased.
 
 ## States and suppression
 
 Intents move from `QUEUED` to `HANDED_OFF`, and from `HANDED_OFF` to
 `ACKNOWLEDGED`. A queued or handed-off intent may be reported `FAILED` with a
-safe failure code and retried, because delivery failure must not silently extend
-retention or imply successful notice. Out-of-order transitions are refused.
+failure code from a fixed allowlist and retried, because delivery failure must not
+silently extend retention or imply successful notice. Failure records its own
+timestamp instead of overwriting the handoff time. Out-of-order transitions are
+refused, except that an acknowledgement arriving after suppression is recorded
+with a `delivered_after_suppression` flag rather than becoming a permanent adapter
+error.
 
-Reactivation, closure expiry, and app-only erasure suppress every outstanding
-intent for the scope, so a person who comes back does not receive an expiry
-notice, and an erased profile does not leave a notice that fires after the data
-is gone. Acknowledged intents are left as history.
+Reactivation, an earlier app-only deletion, closure expiry, and app-only erasure
+suppress every outstanding intent for the scope and publish a withdrawal fact, so
+a person who comes back does not receive an expiry notice, and an erased profile
+does not leave a notice that fires after the data is gone. Acknowledged intents
+are left as history.
 
 ## Recorded verification
 
 On 1 November 2026, `./gradlew clean check bootJar --no-daemon --console=plain`
 passed with the JDK 21 and Colima settings in [foundation](foundation.md):
-121 JVM tests, zero failures/errors/skips, seven contract-suite tests, and
-twenty-one producer/input checks. JaCoCo reported 98.8% line and 84.4% branch
+129 JVM tests, zero failures/errors/skips, seven contract-suite tests, and
+twenty-two producer/input checks. JaCoCo reported 98.4% line and 84.3% branch
 coverage without exclusions, including 71 contract fixtures.
 
-Seven PostgreSQL notice tests cover both windows and their deterministic
-identities, the idempotent retry, a late-observed closure that skips the passed
+Eleven PostgreSQL notice tests cover both windows and their deterministic
+identities, the idempotent retry, a late-observed closure that records the passed
 window, the delivery state machine and its refusals, reactivation suppression
-with fresh intents after a second closure, suppression by both erasure paths, and
-active or absent profiles. A producer check validates an actual persisted intent
+with fresh intents after a second closure at the same authoritative time,
+suppression by an earlier deletion and by both erasure paths, a late
+acknowledgement after suppression, the exact window-start boundary, and active or
+absent profiles. A producer check validates an actual persisted intent
 against the published `notice-intent.json` and confirms it carries no contact,
 channel, wording, or personal value.
 

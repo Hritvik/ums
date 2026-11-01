@@ -58,8 +58,8 @@ class ProfileNoticeTest {
         val ds: DataSource = DriverManagerDataSource(postgres.jdbcUrl, postgres.username, postgres.password)
         Flyway.configure().dataSource(ds).load().migrate()
         jdbc = JdbcTemplate(ds)
-        jdbc.execute("""truncate ums_profile_notice_intents, ums_profile_expiry_fences, ums_profile_lifecycle_evidence,
-            ums_profile_erasure_fences, ums_profile_privacy_audit, ums_profile_privacy_receipts,
+        jdbc.execute("""truncate ums_profile_erasure_obligations, ums_profile_notice_intents, ums_profile_lifecycle_evidence,
+            ums_profile_privacy_audit, ums_profile_privacy_receipts,
             ums_profile_deletion_requests, ums_profile_deletion_causes, ums_iam_activation_owners,
             ums_iam_onboarding_receipts, ums_iam_subject_mappings, ums_iam_app_mappings, ums_iam_source_bindings,
             ums_profile_patch_receipts, ums_event_inbox, ums_event_outbox, ums_profile_bindings,
@@ -123,7 +123,7 @@ class ProfileNoticeTest {
         assertThat(results[NoticeClass.CLOSURE_EXPIRY_14_DAY]?.outcome).isEqualTo(NoticeOutcome.WINDOW_PASSED)
         assertThat(results[NoticeClass.CLOSURE_EXPIRY_7_DAY]?.outcome).isEqualTo(NoticeOutcome.QUEUED)
         assertThat(results[NoticeClass.CLOSURE_EXPIRY_7_DAY]?.deadline).isEqualTo(deadline)
-        assertThat(jdbc.queryForObject("select count(*) from ums_profile_notice_intents", Int::class.java)).isEqualTo(1)
+        assertThat(jdbc.queryForObject("select count(*) from ums_profile_notice_intents", Int::class.java)).isEqualTo(2)
     }
 
     @Test fun `repeat scheduling is idempotent`() {
@@ -141,23 +141,23 @@ class ProfileNoticeTest {
         close()
         val first = schedule().first { it.noticeClass == NoticeClass.CLOSURE_EXPIRY_14_DAY }.noticeReference!!
 
-        assertThatThrownBy { notices.acknowledge(authority, scope, first) }
+        assertThatThrownBy { notices.acknowledge(authority, scope, first, "notice") }
             .isInstanceOf(IllegalArgumentException::class.java)
-        notices.markHandedOff(authority, scope, first)
+        notices.markHandedOff(authority, scope, first, "notice")
         assertThat(stateOf(first)).isEqualTo("HANDED_OFF")
-        notices.acknowledge(authority, scope, first)
+        notices.acknowledge(authority, scope, first, "notice")
         assertThat(stateOf(first)).isEqualTo("ACKNOWLEDGED")
-        assertThatThrownBy { notices.fail(authority, scope, first, "adapter_unavailable") }
+        assertThatThrownBy { notices.fail(authority, scope, first, "ADAPTER_UNAVAILABLE", "notice") }
             .isInstanceOf(IllegalArgumentException::class.java)
 
         val second = schedule().first { it.noticeClass == NoticeClass.CLOSURE_EXPIRY_7_DAY }.noticeReference!!
-        notices.fail(authority, scope, second, "adapter_unavailable")
+        notices.fail(authority, scope, second, "ADAPTER_UNAVAILABLE", "notice")
         assertThat(stateOf(second)).isEqualTo("FAILED")
         assertThat(jdbc.queryForObject("select failure_class from ums_profile_notice_intents where notice_reference = ?",
-            String::class.java, second)).isEqualTo("adapter_unavailable")
-        notices.markHandedOff(authority, scope, second)
+            String::class.java, second)).isEqualTo("ADAPTER_UNAVAILABLE")
+        notices.markHandedOff(authority, scope, second, "notice")
         assertThat(stateOf(second)).isEqualTo("HANDED_OFF")
-        assertThatThrownBy { notices.fail(authority, scope, second, "Bad Class With Spaces") }
+        assertThatThrownBy { notices.fail(authority, scope, second, "Bad Class With Spaces", "notice") }
             .isInstanceOf(IllegalArgumentException::class.java)
     }
 
@@ -204,6 +204,61 @@ class ProfileNoticeTest {
         val absent = ProfileScope(app.issuerEnvironmentRef, app.appReference, UUID.randomUUID())
         assertThat(notices.schedule(authority, absent, "notice").map { it.outcome })
             .containsOnly(NoticeOutcome.UNAVAILABLE)
+    }
+
+    @Test fun `re-closing at the same authoritative time still produces fresh notices`() {
+        val closedAt = clock.instant()
+        close(closedAt)
+        schedule()
+        reactivation.reactivate(TrustedReactivationFact(scope, UUID.randomUUID(), "lifecycle"))
+
+        // Same authoritative closure time: harmlessly idempotent for the binding, but a new
+        // closure instance, so the suppressed intents must not swallow the new ones.
+        close(closedAt)
+
+        assertThat(schedule().map { it.outcome }).containsOnly(NoticeOutcome.QUEUED)
+        assertThat(jdbc.queryForObject("select count(*) from ums_profile_notice_intents", Int::class.java)).isEqualTo(4)
+    }
+
+    @Test fun `an earlier deletion obligation suppresses closed-profile intents and says so`() {
+        close()
+        schedule()
+        val actor = TrustedPrivacyAuthority(scope, UUID.randomUUID(), PrivacyPurpose.REQUEST_DELETION,
+            clock.instant(), true, clock.instant().plus(Duration.ofMinutes(10)))
+
+        deletion.request(actor, DeletionRequestCommand(UUID.randomUUID(), 2, "privacy"))
+
+        assertThat(jdbc.queryForList("select state from ums_profile_notice_intents", String::class.java))
+            .containsOnly("SUPPRESSED")
+        assertThat(jdbc.queryForObject("""select count(*) from ums_event_outbox
+            where event_type = 'ums.profile.notice-intent.v1'
+            and payload ->> 'state' = 'SUPPRESSED'""", Int::class.java)).isEqualTo(2)
+        write("notice-suppressed-producer", jdbc.queryForObject("""select payload::text from ums_event_outbox
+            where event_type = 'ums.profile.notice-intent.v1'
+            and payload ->> 'state' = 'SUPPRESSED' order by stream_revision limit 1""", String::class.java)!!)
+    }
+
+    @Test fun `a late delivery after suppression is recorded instead of failing`() {
+        close()
+        val reference = schedule().first().noticeReference!!
+        notices.markHandedOff(authority, scope, reference, "notice")
+        reactivation.reactivate(TrustedReactivationFact(scope, UUID.randomUUID(), "lifecycle"))
+
+        notices.acknowledge(authority, scope, reference, "notice")
+
+        val row = jdbc.queryForMap("""select state, delivered_after_suppression from ums_profile_notice_intents
+            where notice_reference = ?""", reference)
+        assertThat(row["state"]).isEqualTo("ACKNOWLEDGED")
+        assertThat(row["delivered_after_suppression"]).isEqualTo(true)
+    }
+
+    @Test fun `a notice is queued exactly at its window start`() {
+        close()
+        clock.advance(Duration.ofDays(76))
+
+        val result = schedule().first { it.noticeClass == NoticeClass.CLOSURE_EXPIRY_14_DAY }
+
+        assertThat(result.outcome).isEqualTo(NoticeOutcome.QUEUED)
     }
 
     private fun stateOf(reference: UUID): String =

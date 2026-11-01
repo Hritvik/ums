@@ -58,9 +58,10 @@ internal class PrivacyPersistence(private val jdbc: JdbcTemplate) {
     fun completedFence(scope: ProfileScope, request: StoredDeletionRequest, state: BindingState): Boolean {
         if (request.status != "LOCAL_COMPLETED" || state.lifecycle != com.vik.ums.profiles.Lifecycle.ERASED) return false
         return jdbc.query("""select f.retired_profile_reference, f.retired_generation, f.erased_binding_revision,
-            b.completed_deletion_request_reference from ums_profile_erasure_fences f join ums_profile_bindings b
+            b.completed_deletion_request_reference from ums_profile_erasure_obligations f join ums_profile_bindings b
             using (issuer_environment_ref, app_reference, subject_reference) where f.issuer_environment_ref=?
-            and f.app_reference=? and f.subject_reference=? and f.request_reference=?""", { rs, _ ->
+            and f.app_reference=? and f.subject_reference=? and f.obligation_kind = 'APP_DELETION'
+            and f.cause_reference=?""", { rs, _ ->
             rs.getObject(1, UUID::class.java) == request.profileReference && rs.getLong(2).toString() == request.generation &&
                 rs.getLong(3).toString() == state.bindingRevision && rs.getObject(4, UUID::class.java) == request.reference
         }, scope.issuerEnvironmentRef, scope.appReference, scope.subjectReference, request.reference).singleOrNull() == true

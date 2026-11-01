@@ -89,9 +89,11 @@ Five provider inputs do not exist yet and are carried as named gaps rather than 
 
 **Work to be done.**
 - Add a trusted maintenance seam that erases a closed profile whose retention deadline has passed.
-- Reuse the existing erasure field-clearing and canonical erased event rather than writing a second erasure path, and record an obligation-specific fence keyed to the closure.
-  - The deletion fence is keyed to a deletion request row, so closure expiry cannot borrow it; the expiry fence carries the retired generation, the closure time, and the erased revision, and a restored backup is reconciled against it later.
-- Resolve competing obligations by earliest irreversible deadline: a pending app-only or IAM-global deletion earlier than the closure deadline wins, and closure expiry never starts a fresh grace period.
+- Reuse the existing erasure field-clearing and canonical erased event rather than writing a second erasure path, and record the obligation on the shared erasure fence.
+  - Every obligation writes one fence row with the obligation kind, optional cause reference, retired generation, obligation time, erased revision, and the causes it superseded, so recovery reconciles one surface.
+- Resolve competing obligations by earliest irreversible deadline: an earlier pending deletion wins, a later one cannot extend retention, and closure expiry never starts a fresh grace period.
+- Refuse erasure while an avatar association exists, matching the deletion finalizer instead of dropping the only pointer to a provider asset.
+- Mark a superseded app-only request terminal so it is never selected for processing again and never claims completion or cancellation.
 - Treat a profile reactivated between selection and execution as not due, and report that as a routine skip rather than a failure.
 - Report per-item outcomes with the same blocked, retryable, and corruption distinction already used by due-deletion batches.
 
@@ -103,9 +105,10 @@ Five provider inputs do not exist yet and are carried as named gaps rather than 
 - **Repo doc** — [profile-erasure.md](profile-erasure.md) for the fence, generation retirement, and rollback guarantees this item must not fork.
 
 **Acceptance criteria.**
-- [ ] A profile past its retention deadline is erased with the same tombstone shape and canonical erased event as an app-only deletion, plus an expiry fence carrying the retired generation, closure time, and erased revision, all in one transaction.
+- [ ] A profile past its retention deadline is erased with the same tombstone shape and canonical erased event as an app-only deletion, plus one erasure fence row carrying the obligation kind, retired generation, obligation time, erased revision, and superseded causes, all in one transaction.
 - [ ] A profile before the deadline, or one reactivated after selection, is left untouched and reported as skipped.
-- [ ] When several obligations exist, the earliest irrevocable deadline governs and no later cause extends it.
+- [ ] When several obligations exist, the earliest irrevocable deadline governs, no later cause extends it, and a superseded request reads as terminal `SUPERSEDED` with cancellation ineligible.
+- [ ] An avatar association blocks expiry without mutating the profile, and a reactivation racing the deadline cannot both reopen and erase.
 - [ ] Restoring a closed profile's fields is impossible afterwards: old edit receipts, onboarding retries, and status reads cannot surface the erased values.
 - [ ] Automated tests cover due, not-due, reactivated-after-selection, competing-deadline, and replay paths.
 
@@ -295,11 +298,13 @@ Five provider inputs do not exist yet and are carried as named gaps rather than 
 **Status.** Planned — no completion evidence was recorded in the 2026-11-01 reconciliation; the owner must update this line.
 
 **Work to be done.**
-- Define and publish the notice-intent contract before implementing it: the notice classes, the deduplication identity, and the delivery states the product reports back.
+- Define and publish the notice-intent contract before implementing it: the notice classes, an identity bound to the closure instance, an incrementing notice revision, and the delivery states the product reports back.
+- Publish one minimized fact per state change so the owner can see a withdrawal and stop a queued delivery.
 - Create intents at closure, or on observing a late closure, for the 14-day and 7-day points before the retention deadline.
   - Skip a notice whose window has already passed instead of shifting the window, and never invent a fresh 90-day period.
-- Track queued, handed off, acknowledged, and failed states separately, with retries using the same intent identity.
-- Suppress remaining intents when the retention obligation is cancelled by reactivation or superseded by an earlier deletion obligation.
+- Track queued, handed off, acknowledged, failed, suppressed, and window-passed states separately, with retries using the same intent identity and a failure timestamp that never overwrites the handoff time.
+- Record a late delivery after suppression instead of turning it into a permanent adapter error.
+- Suppress remaining intents when the retention obligation is cancelled by reactivation, superseded by an earlier deletion obligation, or met by erasure.
 - Expose missed notice windows to operators as a visible failure rather than treating silence as success.
 
 **Justification.** The retention decision requires notice intents at 14 and 7 days before expiry, with tracked delivery states and an explicit rule that late closure never invents a fresh period.
@@ -310,11 +315,11 @@ Five provider inputs do not exist yet and are carried as named gaps rather than 
 - **Repo doc** — [work-items.md](work-items.md) W-1 for the closure deadline these notices read.
 
 **Acceptance criteria.**
-- [ ] The published notice contract defines `noticeReference`, `scope`, `requestReference`, `noticeClass` as one of `CLOSURE_EXPIRY_14_DAY`, `CLOSURE_EXPIRY_7_DAY`, `deadline`, `dedupeIdentity`, and `state` as one of `QUEUED`, `HANDED_OFF`, `ACKNOWLEDGED`, `FAILED`, `SUPPRESSED`.
+- [ ] The published notice contract defines `noticeReference`, `scope`, `noticeClass` as one of `CLOSURE_EXPIRY_14_DAY`, `CLOSURE_EXPIRY_7_DAY`, `deadline`, a `dedupeIdentity` bound to the closure instance, an incrementing `noticeRevision`, and `state` as one of `QUEUED`, `HANDED_OFF`, `ACKNOWLEDGED`, `FAILED`, `SUPPRESSED`, `WINDOW_PASSED`.
 - [ ] The same closure never produces a duplicate intent for the same notice class, including after process restart or repeated reconciliation.
-- [ ] A closure observed after a notice window has passed produces no notice for that window and does not move the retention deadline.
-- [ ] Reactivation before expiry suppresses outstanding intents, and a failed handoff is reported as failed rather than acknowledged.
-- [ ] Automated tests cover both windows, late closure, duplicate reconciliation, suppression, and failure reporting.
+- [ ] A closure observed after a notice window has started records a terminal window-passed intent and publishes it, without moving the retention deadline.
+- [ ] Reactivation, an earlier deletion obligation, and erasure each suppress outstanding intents with a published withdrawal fact, and a failed handoff is reported as failed rather than acknowledged.
+- [ ] Automated tests cover both windows, late closure, duplicate reconciliation, a re-closure at the same authoritative time, suppression by each cause, late acknowledgement, the window-start boundary, and failure reporting.
 
 **Depends on.** `W-1.`
 
