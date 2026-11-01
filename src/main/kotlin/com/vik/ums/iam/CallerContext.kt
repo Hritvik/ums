@@ -53,6 +53,7 @@ data class CallerContext(
 class CallerDeniedException(val reason: CallerDenial) : RuntimeException(reason.name)
 
 enum class CallerDenial {
+    HEADER_MISMATCH,
     ISSUER_MISMATCH,
     AUDIENCE_MISMATCH,
     EXPIRED,
