@@ -43,5 +43,5 @@ internal data class StoredNotice(
     val noticeClass: NoticeClass,
     val deadline: Instant,
     val state: NoticeState,
-    val closureReference: UUID,
+    val dedupeIdentity: String,
 )

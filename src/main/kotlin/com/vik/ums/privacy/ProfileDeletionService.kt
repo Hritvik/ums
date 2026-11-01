@@ -63,7 +63,9 @@ class ProfileDeletionService(
         persistence.transition(authority.scope, lifecycle.name, if (ready) Readiness.PROFILE_READY.name else Readiness.PROFILE_REQUIRED.name)
         if (lifecycle == Lifecycle.CLOSED) {
             // The retention obligation is live again, so its notices must be re-armed.
-            rearmNotices(jdbc, mapper, environment, authority.scope, command.correlationId, now)
+            bindings.closureReference(authority.scope)?.let {
+                rearmNotices(jdbc, mapper, environment, authority.scope, it, command.correlationId, now)
+            }
         }
         val after = current(authority.scope)
         val result = PrivacyAccepted(request.reference, Math.addExact(request.revision.toLong(), 1).toString())

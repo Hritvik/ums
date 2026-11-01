@@ -115,8 +115,8 @@ IAM-global obligation is not lost from the audit trail.
 
 On 31 October 2026, `./gradlew clean check bootJar --no-daemon --console=plain`
 passed with the JDK 21 and Colima settings in [foundation](foundation.md):
-131 JVM tests, zero failures/errors/skips, seven contract-suite tests, and
-twenty-two producer/input checks. JaCoCo reported 98.5% line and 84.0% branch
+133 JVM tests, zero failures/errors/skips, seven contract-suite tests, and
+twenty-two producer/input checks. JaCoCo reported 98.5% line and 83.9% branch
 coverage without exclusions. Contract checks include 70 UMS fixtures and the
 pinned IAM artifact validation.
 

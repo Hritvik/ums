@@ -301,6 +301,29 @@ class ProfileNoticeTest {
             .containsOnly("SUPPRESSED")
     }
 
+    @Test fun `cancelling a deletion only re-arms the live closure instance`() {
+        close()
+        schedule()
+        reactivation.reactivate(TrustedReactivationFact(scope, UUID.randomUUID(), "lifecycle"))
+        clock.advance(Duration.ofDays(1))
+        close()
+        schedule()
+        val actor = TrustedPrivacyAuthority(scope, UUID.randomUUID(), PrivacyPurpose.REQUEST_DELETION,
+            clock.instant(), true, clock.instant().plus(Duration.ofMinutes(10)))
+        val accepted = deletion.request(actor, DeletionRequestCommand(UUID.randomUUID(), 4, "privacy"))
+        val cancelling = TrustedPrivacyAuthority(scope, UUID.randomUUID(), PrivacyPurpose.CANCEL_DELETION,
+            clock.instant(), true, clock.instant().plus(Duration.ofMinutes(10)))
+
+        deletion.cancel(cancelling, DeletionCancellationCommand(accepted.operationReference,
+            UUID.randomUUID(), 5, "privacy"))
+
+        // Two closures exist; only the live one is re-armed, the retired one stays withdrawn.
+        assertThat(jdbc.queryForObject("select count(*) from ums_profile_notice_intents where state = 'QUEUED'",
+            Int::class.java)).isEqualTo(2)
+        assertThat(jdbc.queryForObject("select count(*) from ums_profile_notice_intents where state = 'SUPPRESSED'",
+            Int::class.java)).isEqualTo(2)
+    }
+
     private fun stateOf(reference: UUID): String =
         jdbc.queryForObject("select state from ums_profile_notice_intents where notice_reference = ?",
             String::class.java, reference)!!

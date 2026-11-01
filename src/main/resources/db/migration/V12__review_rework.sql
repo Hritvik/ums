@@ -81,3 +81,13 @@ update ums_profile_notice_intents n set closure_reference = b.closure_reference
 from ums_profile_bindings b
 where n.issuer_environment_ref = b.issuer_environment_ref and n.app_reference = b.app_reference
   and n.subject_reference = b.subject_reference and n.closure_reference is null;
+
+-- Legacy dedupe identities were deadline-based; rebind them to the closure instance
+-- so a post-upgrade schedule does not create a second intent for the same obligation.
+update ums_profile_notice_intents n
+set dedupe_identity = encode(sha256(convert_to(
+    format('["%s","%s","%s","%s","%s"]', n.issuer_environment_ref, n.app_reference,
+           n.subject_reference, n.notice_class, b.closure_reference), 'UTF8')), 'hex')
+from ums_profile_bindings b
+where n.issuer_environment_ref = b.issuer_environment_ref and n.app_reference = b.app_reference
+  and n.subject_reference = b.subject_reference and b.closure_reference is not null;

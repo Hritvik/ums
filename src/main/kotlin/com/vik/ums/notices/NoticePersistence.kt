@@ -17,19 +17,19 @@ internal data class SuppressedNotice(
 
 internal class NoticePersistence(private val jdbc: JdbcTemplate) {
     fun find(scope: ProfileScope, reference: UUID): StoredNotice? = jdbc.query("""select notice_reference,
-        notice_class, deadline, state, closure_reference from ums_profile_notice_intents
+        notice_class, deadline, state, dedupe_identity from ums_profile_notice_intents
         where issuer_environment_ref = ? and app_reference = ? and subject_reference = ? and notice_reference = ?""",
         { rs, _ -> StoredNotice(rs.getObject(1, UUID::class.java), scope,
             NoticeClass.valueOf(rs.getString(2)), rs.getTimestamp(3).toInstant(), NoticeState.valueOf(rs.getString(4)),
-            rs.getObject(5, UUID::class.java)) },
+            rs.getString(5)) },
         scope.issuerEnvironmentRef, scope.appReference, scope.subjectReference, reference).singleOrNull()
 
     fun findByDedupe(scope: ProfileScope, dedupeIdentity: String): StoredNotice? = jdbc.query("""select notice_reference,
-        notice_class, deadline, state, closure_reference from ums_profile_notice_intents
+        notice_class, deadline, state, dedupe_identity from ums_profile_notice_intents
         where issuer_environment_ref = ? and app_reference = ? and subject_reference = ? and dedupe_identity = ?""",
         { rs, _ -> StoredNotice(rs.getObject(1, UUID::class.java), scope,
             NoticeClass.valueOf(rs.getString(2)), rs.getTimestamp(3).toInstant(), NoticeState.valueOf(rs.getString(4)),
-            rs.getObject(5, UUID::class.java)) },
+            rs.getString(5)) },
         scope.issuerEnvironmentRef, scope.appReference, scope.subjectReference, dedupeIdentity).singleOrNull()
 
     fun insert(scope: ProfileScope, reference: UUID, noticeClass: NoticeClass, deadline: Instant,
@@ -76,17 +76,20 @@ internal class NoticePersistence(private val jdbc: JdbcTemplate) {
             rs.getTimestamp(3).toInstant(), rs.getString(4), rs.getLong(5)) },
         Timestamp.from(now), scope.issuerEnvironmentRef, scope.appReference, scope.subjectReference)
 
-    fun suppressed(scope: ProfileScope): List<SuppressedNotice> = jdbc.query("""select notice_reference,
+    /** Only the live closure instance is eligible: a stale suppressed intent must not be revived. */
+    fun suppressed(scope: ProfileScope, closureReference: UUID): List<SuppressedNotice> = jdbc.query("""select notice_reference,
         notice_class, deadline, dedupe_identity, notice_revision from ums_profile_notice_intents
-        where issuer_environment_ref = ? and app_reference = ? and subject_reference = ? and state = 'SUPPRESSED'""",
+        where issuer_environment_ref = ? and app_reference = ? and subject_reference = ? and state = 'SUPPRESSED'
+        and closure_reference = ?""",
         { rs, _ -> SuppressedNotice(rs.getObject(1, UUID::class.java), NoticeClass.valueOf(rs.getString(2)),
             rs.getTimestamp(3).toInstant(), rs.getString(4), rs.getLong(5)) },
-        scope.issuerEnvironmentRef, scope.appReference, scope.subjectReference)
+        scope.issuerEnvironmentRef, scope.appReference, scope.subjectReference, closureReference)
 
     /** Re-arms a suppressed intent when the obligation that suppressed it is withdrawn. */
     fun revive(scope: ProfileScope, reference: UUID, state: NoticeState, now: Instant): Long? =
         jdbc.query("""update ums_profile_notice_intents
-            set state = ?, suppressed_at = null, window_passed_at = ?, notice_revision = notice_revision + 1
+            set state = ?, suppressed_at = null, window_passed_at = ?, failed_at = null, failure_class = null,
+            delivered_after_suppression = false, notice_revision = notice_revision + 1
             where issuer_environment_ref = ? and app_reference = ? and subject_reference = ?
             and notice_reference = ? and state = 'SUPPRESSED' returning notice_revision""",
             { rs, _ -> rs.getLong(1) }, state.name,
@@ -134,10 +137,10 @@ internal fun appendNoticeFact(
 /** Re-arms intents whose suppressing obligation was withdrawn, and publishes the change. */
 internal fun rearmNotices(
     jdbc: JdbcTemplate, mapper: ObjectMapper, environment: String, scope: ProfileScope,
-    correlationId: String, occurredAt: Instant,
+    closureReference: UUID, correlationId: String, occurredAt: Instant,
 ) {
     val persistence = NoticePersistence(jdbc)
-    persistence.suppressed(scope).forEach { notice ->
+    persistence.suppressed(scope, closureReference).forEach { notice ->
         val windowStart = notice.deadline.minusSeconds(notice.noticeClass.windowDays * 86_400)
         val target = if (occurredAt.isAfter(windowStart)) NoticeState.WINDOW_PASSED else NoticeState.QUEUED
         val revision = persistence.revive(scope, notice.reference, target, occurredAt) ?: return@forEach

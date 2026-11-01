@@ -126,8 +126,7 @@ class ProfileNoticeService(
             val revision = persistence.transition(scope, stored.reference, setOf(stored.state), to, column, now,
                 failureClass, lateAfterSuppression) ?: throw IllegalStateException("Notice state changed concurrently")
             appendNoticeFact(jdbc, mapper, environment, scope, stored.reference, stored.noticeClass, stored.deadline,
-                dedupeIdentity(scope, stored.noticeClass, stored.closureReference), to, revision,
-                correlationId, now)
+                stored.dedupeIdentity, to, revision, correlationId, now)
         }
     }
 
