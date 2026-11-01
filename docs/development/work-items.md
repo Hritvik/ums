@@ -89,8 +89,8 @@ Five provider inputs do not exist yet and are carried as named gaps rather than 
 
 **Work to be done.**
 - Add a trusted maintenance seam that erases a closed profile whose retention deadline has passed.
-- Reuse the existing erasure transaction and completion fence rather than writing a second erasure path, so cleared fields, the tombstone, the audit record, and the erased event stay identical across both causes.
-  - The tombstone must remain resolvable from the closure record so a restored backup can be reconciled later.
+- Reuse the existing erasure field-clearing and canonical erased event rather than writing a second erasure path, and record an obligation-specific fence keyed to the closure.
+  - The deletion fence is keyed to a deletion request row, so closure expiry cannot borrow it; the expiry fence carries the retired generation, the closure time, and the erased revision, and a restored backup is reconciled against it later.
 - Resolve competing obligations by earliest irreversible deadline: a pending app-only or IAM-global deletion earlier than the closure deadline wins, and closure expiry never starts a fresh grace period.
 - Treat a profile reactivated between selection and execution as not due, and report that as a routine skip rather than a failure.
 - Report per-item outcomes with the same blocked, retryable, and corruption distinction already used by due-deletion batches.
@@ -103,7 +103,7 @@ Five provider inputs do not exist yet and are carried as named gaps rather than 
 - **Repo doc** — [profile-erasure.md](profile-erasure.md) for the fence, generation retirement, and rollback guarantees this item must not fork.
 
 **Acceptance criteria.**
-- [ ] A profile past its retention deadline is erased with the same tombstone, fence, audit record, and canonical erased event as an app-only deletion, all in one transaction.
+- [ ] A profile past its retention deadline is erased with the same tombstone shape and canonical erased event as an app-only deletion, plus an expiry fence carrying the retired generation, closure time, and erased revision, all in one transaction.
 - [ ] A profile before the deadline, or one reactivated after selection, is left untouched and reported as skipped.
 - [ ] When several obligations exist, the earliest irrevocable deadline governs and no later cause extends it.
 - [ ] Restoring a closed profile's fields is impossible afterwards: old edit receipts, onboarding retries, and status reads cannot surface the erased values.

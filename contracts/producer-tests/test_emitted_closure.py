@@ -64,6 +64,17 @@ class EmittedClosure(unittest.TestCase):
         self.assertEqual(status['nextActions'], [])
         self.assertNotIn('retentionDeadline', status)
 
+    def test_persisted_expiry_event(self):
+        event = self.artifact('expired-event.json', 'profile-state-event.json')
+        self.assertEqual(event['reason'], 'ERASED')
+        state = event['state']
+        self.assertEqual(state['lifecycle'], 'ERASED')
+        self.assertEqual(state['readiness'], 'PROFILE_REQUIRED')
+        self.assertEqual(state['deletionCauses'], {})
+        for key in ['profileReference', 'generation', 'profileRevision',
+                    'displayName', 'avatarReference', 'displayLocale', 'displayTimezone']:
+            self.assertNotIn(key, state)
+
 
 if __name__ == '__main__':
     unittest.main()

@@ -45,6 +45,32 @@ internal class LifecyclePersistence(private val jdbc: JdbcTemplate) {
             scope.issuerEnvironmentRef, scope.appReference, scope.subjectReference)
     }
 
+    /**
+     * Erases a closed generation only. Field clearing matches the deletion finalizer so a
+     * retained profile leaves the same tombstone shape regardless of which obligation expired.
+     */
+    fun expireErased(scope: ProfileScope, revision: Long): Boolean =
+        jdbc.update("""update ums_profile_bindings set lifecycle = 'ERASED', readiness = 'PROFILE_REQUIRED',
+            profile_reference = null, generation = null, profile_revision = null,
+            closure_present = false, closure_at = null, closure_retain_until = null,
+            display_name = null, avatar_reference = null, display_locale = null, display_timezone = null,
+            binding_revision = ?
+            where issuer_environment_ref = ? and app_reference = ? and subject_reference = ? and lifecycle = 'CLOSED'""",
+            revision, scope.issuerEnvironmentRef, scope.appReference, scope.subjectReference) == 1
+
+    fun recordExpiryFence(
+        scope: ProfileScope, retiredProfileReference: UUID, retiredGeneration: Long, closureAt: Instant,
+        erasedRevision: Long, erasedAt: Instant,
+    ) {
+        jdbc.update("""insert into ums_profile_expiry_fences
+            (fence_reference, issuer_environment_ref, app_reference, subject_reference, retired_profile_reference,
+             retired_generation, closure_at, erased_binding_revision, erased_at)
+            values (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            UUID.randomUUID(), scope.issuerEnvironmentRef, scope.appReference, scope.subjectReference,
+            retiredProfileReference, retiredGeneration, Timestamp.from(closureAt), erasedRevision,
+            Timestamp.from(erasedAt))
+    }
+
     fun recordEvidence(
         scope: ProfileScope, action: String, bindingRevision: Long, effectiveAt: Instant,
         retainUntil: Instant?, occurredAt: Instant, eventId: UUID, correlationId: String,

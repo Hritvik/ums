@@ -73,12 +73,33 @@ current policy revision, so a profile that no longer satisfies today's required
 fields reports incomplete rather than claiming readiness. Stored display values
 are never rewritten by reactivation.
 
+## Closure expiry
+
+Expiry executes the retention promise that closure already published. It is not a
+new deletion request: it opens no grace period, offers no cancellation, and never
+moves the deadline. A profile whose deadline has not passed is reported as not
+due, and anything that is not currently a closed generation is skipped without
+mutation, which is how a deletion obligation or a reactivation that lands after
+selection wins the race.
+
+The expiry seam takes the shared policy lock as well, so it cannot interleave with
+edits, closure, reactivation, deletion, or finalization. Because the obligation
+was accepted while the app was adopted, expiry does not require adoption to
+remain enabled; only the registered policy row is required for serialization.
+
+Erasure clears exactly the fields the deletion finalizer clears and publishes the
+same `ERASED` event, so consumers see one tombstone shape regardless of which
+obligation expired. The fence differs by obligation: the deletion fence is keyed
+to a deletion request row, so expiry records its own fence carrying the retired
+profile reference, generation, closure time, and erased binding revision.
+Repeated expiry finds an already erased profile, skips, and emits nothing.
+
 ## Recorded verification
 
 On 31 October 2026, `./gradlew clean check bootJar --no-daemon --console=plain`
 passed with the JDK 21 and Colima settings in [foundation](foundation.md):
-109 JVM tests, zero failures/errors/skips, seven contract-suite tests, and
-eighteen producer/input checks. JaCoCo reported 99.1% line and 85.6% branch
+114 JVM tests, zero failures/errors/skips, seven contract-suite tests, and
+nineteen producer/input checks. JaCoCo reported 98.9% line and 85.0% branch
 coverage without exclusions. Contract checks include 70 UMS fixtures and the
 pinned IAM artifact validation.
 
@@ -87,9 +108,12 @@ the retry with the same authoritative time, a conflicting time, concurrent
 closure, closure during a pending deletion, and unavailable profiles. Five
 reactivation tests cover the reopen and readiness recomputation, the deadline
 boundary, deletion and erasure refusal, absent, de-adopted, and legacy-closure
-refusal, and a repeated command. Actual persisted event and status JSON are
-validated against the published schemas by producer checks, including the absence
-of display values in both events.
+refusal, and a repeated command. Five expiry tests cover erasure at the deadline
+with its fence and evidence, the not-due boundary, an independent deletion
+obligation, a reactivated generation, and repeated or unrelated invocations.
+Actual persisted event and status JSON are validated against the published
+schemas by producer checks, including the absence of display values in every
+event.
 
 RED evidence: the closure and reactivation tests first failed to compile because
 the services and models did not exist, and the status producer check failed
@@ -98,8 +122,8 @@ does not allow.
 
 ## Remaining gates
 
-Closure expiry, IAM-global deletion causes, and the real departure and
-reactivation transports remain outstanding. No scheduler, HTTP route, or
-production authority is enabled, and the retention period is a local constant
-until operations version it. The next lifecycle work is
-[work items](work-items.md) W-3 and W-4.
+IAM-global deletion causes and the real departure, reactivation, and expiry
+transports remain outstanding. No scheduler, HTTP route, or production authority
+is enabled, and the retention period is a local constant until operations
+version it. The next lifecycle work is [work items](work-items.md) W-4, and
+scheduling the expiry worker is part of W-15.
