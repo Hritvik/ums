@@ -142,6 +142,27 @@ class ProfileExpiryTest {
         assertThat(eventCount()).isEqualTo(3)
     }
 
+    @Test fun `a later pending deletion cannot extend the published retention`() {
+        close()
+        clock.advance(Duration.ofDays(80))
+        val actor = TrustedPrivacyAuthority(scope, UUID.randomUUID(), PrivacyPurpose.REQUEST_DELETION,
+            clock.instant(), true, clock.instant().plus(Duration.ofMinutes(10)))
+        deletion.request(actor, DeletionRequestCommand(UUID.randomUUID(), 3, "privacy"))
+        clock.advance(Duration.ofDays(10))
+
+        val result = expiry.expire(expiryFact())
+
+        // The closure deadline is earlier than the deletion deadline, so it governs.
+        assertThat(result.outcome).isEqualTo(ExpiryOutcome.EXPIRED)
+        assertThat(jdbc.queryForObject("select count(*) from ums_profile_deletion_causes", Int::class.java)).isZero()
+        val event = event(5)
+        assertThat(event["reason"].asText()).isEqualTo("ERASED")
+        assertThat(event["state"]["deletionCauses"].isEmpty).isTrue()
+        // The pending request is superseded, not reported as completed or cancelled.
+        assertThat(jdbc.queryForObject("select status from ums_profile_deletion_requests", String::class.java))
+            .isEqualTo("PENDING")
+    }
+
     @Test fun `a reactivated profile is not expired`() {
         close()
         reactivation.reactivate(TrustedReactivationFact(scope, UUID.randomUUID(), "lifecycle"))

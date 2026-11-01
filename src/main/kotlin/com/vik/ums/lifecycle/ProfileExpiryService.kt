@@ -38,16 +38,24 @@ class ProfileExpiryService(
         require(lockedPolicy(jdbc, mapper, fact.scope.application()) != null) { "Application is not registered" }
         val current = bindings.binding(fact.scope)
             ?: return@execute ExpiryResult(ExpiryOutcome.UNAVAILABLE)
-        if (current.lifecycle != Lifecycle.CLOSED) return@execute ExpiryResult(ExpiryOutcome.SKIPPED, current)
+        if (current.lifecycle != Lifecycle.CLOSED && current.lifecycle != Lifecycle.DELETION_PENDING)
+            return@execute ExpiryResult(ExpiryOutcome.SKIPPED, current)
         val recorded = persistence.closure(fact.scope)
             ?: return@execute ExpiryResult(ExpiryOutcome.SKIPPED, current)
         val retainUntil = recorded.retainUntil
             ?: return@execute ExpiryResult(ExpiryOutcome.SKIPPED, current)
+        // The earliest irreversible deadline governs. A pending deletion that lands earlier
+        // owns erasure even when its worker is late; a later one cannot extend retention.
+        val earliestCause = listOfNotNull(current.deletionCauses.appOnly, current.deletionCauses.iamGlobal)
+            .map { Instant.parse(it.deadline) }.minOrNull()
+        if (earliestCause != null && earliestCause.isBefore(retainUntil))
+            return@execute ExpiryResult(ExpiryOutcome.SKIPPED, current)
         val now = clock.instant().truncatedTo(ChronoUnit.MICROS)
         if (now.isBefore(retainUntil)) return@execute ExpiryResult(ExpiryOutcome.NOT_DUE, current)
 
         val revision = Math.addExact(current.bindingRevision.toLong(), 1)
-        check(persistence.expireErased(fact.scope, revision)) { "Profile is no longer a closed generation" }
+        check(persistence.expireErased(fact.scope, revision)) { "Profile is no longer a retained generation" }
+        persistence.clearCauses(fact.scope)
         persistence.recordExpiryFence(fact.scope, current.profileReference!!, current.generation!!.toLong(),
             recorded.closedAt, revision, now)
         NoticePersistence(jdbc).suppress(fact.scope, now)

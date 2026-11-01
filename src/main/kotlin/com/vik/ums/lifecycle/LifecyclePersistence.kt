@@ -55,8 +55,16 @@ internal class LifecyclePersistence(private val jdbc: JdbcTemplate) {
             closure_present = false, closure_at = null, closure_retain_until = null,
             display_name = null, avatar_reference = null, display_locale = null, display_timezone = null,
             binding_revision = ?
-            where issuer_environment_ref = ? and app_reference = ? and subject_reference = ? and lifecycle = 'CLOSED'""",
+            where issuer_environment_ref = ? and app_reference = ? and subject_reference = ?
+            and lifecycle in ('CLOSED', 'DELETION_PENDING')""",
             revision, scope.issuerEnvironmentRef, scope.appReference, scope.subjectReference) == 1
+
+    /** Clears superseded deletion causes so an erased binding carries no active obligation. */
+    fun clearCauses(scope: ProfileScope) {
+        jdbc.update("""delete from ums_profile_deletion_causes
+            where issuer_environment_ref = ? and app_reference = ? and subject_reference = ?""",
+            scope.issuerEnvironmentRef, scope.appReference, scope.subjectReference)
+    }
 
     fun recordExpiryFence(
         scope: ProfileScope, retiredProfileReference: UUID, retiredGeneration: Long, closureAt: Instant,

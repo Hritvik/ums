@@ -78,9 +78,15 @@ are never rewritten by reactivation.
 Expiry executes the retention promise that closure already published. It is not a
 new deletion request: it opens no grace period, offers no cancellation, and never
 moves the deadline. A profile whose deadline has not passed is reported as not
-due, and anything that is not currently a closed generation is skipped without
-mutation, which is how a deletion obligation or a reactivation that lands after
-selection wins the race.
+due.
+
+The earliest irreversible deadline governs. A pending deletion whose own deadline
+is earlier than the retention deadline owns erasure, even when its worker has not
+run yet, and expiry skips. A pending deletion whose deadline is later cannot
+extend retention: expiry erases at the closure deadline and clears the superseded
+cause, leaving the request itself untouched rather than falsely reporting it as
+completed or cancelled. A reactivation that lands after selection leaves an active
+profile, which is skipped without mutation.
 
 The expiry seam takes the shared policy lock as well, so it cannot interleave with
 edits, closure, reactivation, deletion, or finalization. Because the obligation
@@ -98,8 +104,8 @@ Repeated expiry finds an already erased profile, skips, and emits nothing.
 
 On 31 October 2026, `./gradlew clean check bootJar --no-daemon --console=plain`
 passed with the JDK 21 and Colima settings in [foundation](foundation.md):
-114 JVM tests, zero failures/errors/skips, seven contract-suite tests, and
-nineteen producer/input checks. JaCoCo reported 98.9% line and 85.0% branch
+122 JVM tests, zero failures/errors/skips, seven contract-suite tests, and
+twenty-one producer/input checks. JaCoCo reported 98.8% line and 84.4% branch
 coverage without exclusions. Contract checks include 70 UMS fixtures and the
 pinned IAM artifact validation.
 
@@ -108,9 +114,10 @@ the retry with the same authoritative time, a conflicting time, concurrent
 closure, closure during a pending deletion, and unavailable profiles. Five
 reactivation tests cover the reopen and readiness recomputation, the deadline
 boundary, deletion and erasure refusal, absent, de-adopted, and legacy-closure
-refusal, and a repeated command. Five expiry tests cover erasure at the deadline
-with its fence and evidence, the not-due boundary, an independent deletion
-obligation, a reactivated generation, and repeated or unrelated invocations.
+refusal, and a repeated command. Six expiry tests cover erasure at the deadline
+with its fence and evidence, the not-due boundary, an earlier independent
+deletion obligation, a later deletion that cannot extend retention, a reactivated
+generation, and repeated or unrelated invocations.
 Actual persisted event and status JSON are validated against the published
 schemas by producer checks, including the absence of display values in every
 event.
