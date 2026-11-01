@@ -29,8 +29,12 @@ class IamOnboardingAdapter(
         require(registrations.values.toSet().size == registrations.size)
     }
 
-    fun consume(json: String): ProvisioningResult {
+    fun consume(json: String, authenticatedApplicationId: String? = null): ProvisioningResult {
         val event = parser.parse(json)
+        // The transport-attributed application must match the payload; neither side decides alone.
+        require(authenticatedApplicationId == null || event.appRegistrationId == authenticatedApplicationId) {
+            "Payload application does not match the authenticated producer binding"
+        }
         val app = registrations[event.appRegistrationId] ?: throw IllegalArgumentException("IAM application is not registered")
         return transactions.execute {
             val policy = lockedPolicy(jdbc, mapper, app)
