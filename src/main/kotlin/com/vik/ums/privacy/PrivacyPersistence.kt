@@ -76,32 +76,34 @@ internal class PrivacyPersistence(private val jdbc: JdbcTemplate) {
     }
 
     /** Returns false when the fact is not newer than the applied source revision. */
-    fun pendingTransition(scope: ProfileScope, sourceRevision: Long, revision: Long): Boolean =
+    fun pendingTransition(scope: ProfileScope, sourceRevision: Long, revision: Long,
+                          expectedRevision: Long): Boolean =
         jdbc.update("""update ums_profile_bindings set lifecycle = 'DELETION_PENDING', readiness = 'PROFILE_REQUIRED',
             binding_revision = ?, global_source_revision = ?
             where issuer_environment_ref = ? and app_reference = ? and subject_reference = ?
-            and lifecycle <> 'ERASED' and global_source_revision < ?""",
+            and binding_revision = ? and lifecycle <> 'ERASED' and global_source_revision < ?""",
             revision, sourceRevision, scope.issuerEnvironmentRef, scope.appReference, scope.subjectReference,
-            sourceRevision) == 1
+            expectedRevision, sourceRevision) == 1
 
-    fun cancelTransition(scope: ProfileScope, sourceRevision: Long, lifecycle: String, readiness: String): Boolean =
+    fun cancelTransition(scope: ProfileScope, sourceRevision: Long, lifecycle: String, readiness: String,
+                         expectedRevision: Long): Boolean =
         jdbc.update("""update ums_profile_bindings set lifecycle = ?, readiness = ?,
             binding_revision = binding_revision + 1, global_source_revision = ?
             where issuer_environment_ref = ? and app_reference = ? and subject_reference = ?
-            and lifecycle <> 'ERASED' and global_source_revision < ?""",
+            and binding_revision = ? and lifecycle <> 'ERASED' and global_source_revision < ?""",
             lifecycle, readiness, sourceRevision, scope.issuerEnvironmentRef, scope.appReference,
-            scope.subjectReference, sourceRevision) == 1
+            scope.subjectReference, expectedRevision, sourceRevision) == 1
 
-    fun eraseGlobal(scope: ProfileScope, sourceRevision: Long, revision: Long): Boolean =
+    fun eraseGlobal(scope: ProfileScope, sourceRevision: Long, revision: Long, expectedRevision: Long): Boolean =
         jdbc.update("""update ums_profile_bindings set lifecycle = 'ERASED', readiness = 'PROFILE_REQUIRED',
             profile_reference = null, generation = null, profile_revision = null,
             closure_present = false, closure_reference = null, closure_at = null, closure_retain_until = null,
             display_name = null, avatar_reference = null, display_locale = null, display_timezone = null,
             binding_revision = ?, global_source_revision = ?
             where issuer_environment_ref = ? and app_reference = ? and subject_reference = ?
-            and lifecycle <> 'ERASED' and global_source_revision < ?""",
+            and binding_revision = ? and lifecycle <> 'ERASED' and global_source_revision < ?""",
             revision, sourceRevision, scope.issuerEnvironmentRef, scope.appReference, scope.subjectReference,
-            sourceRevision) == 1
+            expectedRevision, sourceRevision) == 1
 
     fun completedFence(scope: ProfileScope, request: StoredDeletionRequest, state: BindingState): Boolean {
         if (request.status != "LOCAL_COMPLETED" || state.lifecycle != com.vik.ums.profiles.Lifecycle.ERASED) return false
@@ -115,9 +117,10 @@ internal class PrivacyPersistence(private val jdbc: JdbcTemplate) {
         }, scope.issuerEnvironmentRef, scope.appReference, scope.subjectReference, request.reference).singleOrNull() == true
     }
 
-    fun closurePresent(scope: ProfileScope): Boolean = jdbc.queryForObject("""select closure_present from ums_profile_bindings
-        where issuer_environment_ref = ? and app_reference = ? and subject_reference = ?""", Boolean::class.java,
-        scope.issuerEnvironmentRef, scope.appReference, scope.subjectReference)!!
+    /** A closure that still has a live retention deadline. The historical flag is sticky across reactivation. */
+    fun liveClosure(scope: ProfileScope): Boolean = jdbc.queryForObject("""select closure_retain_until is not null
+        from ums_profile_bindings where issuer_environment_ref = ? and app_reference = ? and subject_reference = ?""",
+        Boolean::class.java, scope.issuerEnvironmentRef, scope.appReference, scope.subjectReference)!!
 
     fun transition(scope: ProfileScope, lifecycle: String, readiness: String) {
         jdbc.update("""update ums_profile_bindings set lifecycle = ?, readiness = ?, binding_revision = binding_revision + 1

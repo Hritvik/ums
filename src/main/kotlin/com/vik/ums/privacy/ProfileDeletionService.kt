@@ -32,9 +32,13 @@ class ProfileDeletionService(
         check(before.deletionCauses.appOnly == null) { "App-only deletion is already pending" }
         val reference = UUID.randomUUID()
         val acceptedAt = now.truncatedTo(java.time.temporal.ChronoUnit.MICROS)
-        persistence.accept(before, reference, acceptedAt, acceptedAt.plus(Duration.ofDays(30)))
-        // An earlier deletion obligation supersedes the retention schedule it was built on.
-        suppressNotices(jdbc, mapper, environment, authority.scope, command.correlationId, now)
+        val deletionDeadline = acceptedAt.plus(Duration.ofDays(30))
+        persistence.accept(before, reference, acceptedAt, deletionDeadline)
+        // Only an obligation earlier than the retention deadline supersedes its notices.
+        val closureDeadline = bindings.closureDeadline(authority.scope)
+        if (closureDeadline == null || deletionDeadline.isBefore(closureDeadline)) {
+            suppressNotices(jdbc, mapper, environment, authority.scope, command.correlationId, now)
+        }
         val after = current(authority.scope)
         val result = PrivacyAccepted(reference, "1")
         persistence.record(authority, command.idempotencyKey, fingerprint, after, result, now, command.correlationId)
@@ -55,7 +59,7 @@ class ProfileDeletionService(
         persistence.cancel(authority.scope, request.reference)
         val lifecycle = when {
             before.deletionCauses.iamGlobal != null -> Lifecycle.DELETION_PENDING
-            persistence.closurePresent(authority.scope) -> Lifecycle.CLOSED
+            persistence.liveClosure(authority.scope) -> Lifecycle.CLOSED
             else -> Lifecycle.ACTIVE
         }
         val presentFields = fields.fields(authority.scope).keys

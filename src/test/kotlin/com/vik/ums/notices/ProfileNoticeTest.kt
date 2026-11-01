@@ -324,6 +324,20 @@ class ProfileNoticeTest {
             Int::class.java)).isEqualTo(2)
     }
 
+    @Test fun `a deletion that lands after the retention deadline leaves notices live`() {
+        close()
+        schedule()
+        clock.advance(Duration.ofDays(80))
+        val actor = TrustedPrivacyAuthority(scope, UUID.randomUUID(), PrivacyPurpose.REQUEST_DELETION,
+            clock.instant(), true, clock.instant().plus(Duration.ofMinutes(10)))
+
+        // The 30-day window ends after the 90-day retention deadline, so expiry still governs.
+        deletion.request(actor, DeletionRequestCommand(UUID.randomUUID(), 2, "privacy"))
+
+        assertThat(jdbc.queryForList("select state from ums_profile_notice_intents", String::class.java))
+            .containsOnly("QUEUED")
+    }
+
     private fun stateOf(reference: UUID): String =
         jdbc.queryForObject("select state from ums_profile_notice_intents where notice_reference = ?",
             String::class.java, reference)!!

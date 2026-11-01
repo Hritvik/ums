@@ -3,6 +3,8 @@ package com.vik.ums.privacy
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import com.vik.ums.lifecycle.ProfileClosureService
 import com.vik.ums.lifecycle.ProfileExpiryService
+import com.vik.ums.lifecycle.ProfileReactivationService
+import com.vik.ums.lifecycle.TrustedReactivationFact
 import com.vik.ums.lifecycle.TrustedClosureFact
 import com.vik.ums.lifecycle.TrustedExpiryFact
 import com.vik.ums.notices.ProfileNoticeService
@@ -41,6 +43,7 @@ class GlobalDeletionTest {
     private lateinit var deletion: ProfileDeletionService
     private lateinit var closure: ProfileClosureService
     private lateinit var expiry: ProfileExpiryService
+    private lateinit var reactivation: ProfileReactivationService
     private lateinit var notices: ProfileNoticeService
     private lateinit var global: ProfileGlobalDeletionService
     private val provider get() = TrustedProviderAuthority(app, UUID.randomUUID())
@@ -65,6 +68,7 @@ class GlobalDeletionTest {
         deletion = ProfileDeletionService(jdbc, tx, mapper, "test", clock, Duration.ofMinutes(5))
         closure = ProfileClosureService(jdbc, tx, mapper, "test", clock)
         expiry = ProfileExpiryService(jdbc, tx, mapper, "test", clock)
+        reactivation = ProfileReactivationService(jdbc, tx, mapper, "test", clock)
         notices = ProfileNoticeService(jdbc, tx, mapper, "test", clock)
         global = ProfileGlobalDeletionService(jdbc, tx, mapper, "test", clock)
     }
@@ -175,6 +179,61 @@ class GlobalDeletionTest {
         assertThat(event["state"]["deletionCauses"].isEmpty).isTrue()
     }
 
+    @Test fun `cancelling a global obligation cannot resurrect a dead closure`() {
+        closure.close(TrustedClosureFact(scope, clock.instant(), UUID.randomUUID(), "lifecycle"))
+        reactivation.reactivate(TrustedReactivationFact(scope, UUID.randomUUID(), "lifecycle"))
+        pending(1, clock.instant().plus(Duration.ofDays(20)))
+
+        val result = cancel(2)
+
+        // The profile was reactivated before the pending fact, so the sticky closure flag
+        // must not drive it back to CLOSED with no live deadline.
+        assertThat(result.outcome).isEqualTo(GlobalDeletionOutcome.APPLIED)
+        assertThat(result.state?.lifecycle).isEqualTo(Lifecycle.ACTIVE)
+        assertThat(result.state?.readiness).isEqualTo(Readiness.PROFILE_READY)
+        val state = provisioning.status(app, scope)
+        assertThat(state.retentionDeadline).isNull()
+        assertThat(state.nextActions).isEmpty()
+        assertThat(editing.display(TrustedHumanAuthority(scope, UUID.randomUUID(), setOf(HumanAction.READ))))
+            .isNotNull()
+    }
+
+    @Test fun `a replayed pending fact is stale and leaves the applied revision untouched`() {
+        pending(1)
+        val revision = jdbc.queryForObject("select global_source_revision from ums_profile_bindings", Long::class.java)
+        val causes = jdbc.queryForObject("select count(*) from ums_profile_deletion_causes", Int::class.java)
+        val events = jdbc.queryForObject("select count(*) from ums_event_outbox", Int::class.java)
+
+        assertThat(pending(1).outcome).isEqualTo(GlobalDeletionOutcome.STALE)
+
+        assertThat(jdbc.queryForObject("select global_source_revision from ums_profile_bindings", Long::class.java))
+            .isEqualTo(revision)
+        assertThat(jdbc.queryForObject("select count(*) from ums_profile_deletion_causes", Int::class.java))
+            .isEqualTo(causes)
+        assertThat(jdbc.queryForObject("select count(*) from ums_event_outbox", Int::class.java)).isEqualTo(events)
+    }
+
+    @Test fun `concurrent finals erase once and the loser is stale`() {
+        val start = java.util.concurrent.CountDownLatch(1)
+        val pool = java.util.concurrent.Executors.newFixedThreadPool(2)
+        try {
+            val results = (1..2).map {
+                pool.submit(java.util.concurrent.Callable {
+                    start.await()
+                    final(1).outcome
+                })
+            }
+            start.countDown()
+            val outcomes = results.map { it.get(30, java.util.concurrent.TimeUnit.SECONDS) }
+            assertThat(outcomes).containsExactlyInAnyOrder(GlobalDeletionOutcome.APPLIED, GlobalDeletionOutcome.STALE)
+        } finally {
+            pool.shutdownNow()
+        }
+        assertThat(jdbc.queryForObject("select count(*) from ums_profile_erasure_obligations", Int::class.java))
+            .isEqualTo(1)
+        assertThat(jdbc.queryForObject("select count(*) from ums_event_outbox", Int::class.java)).isEqualTo(2)
+    }
+
     @Test fun `stale and replayed revisions change nothing`() {
         assertThat(pending(1).outcome).isEqualTo(GlobalDeletionOutcome.APPLIED)
         assertThat(cancel(1).outcome).isEqualTo(GlobalDeletionOutcome.STALE)
@@ -215,6 +274,8 @@ class GlobalDeletionTest {
 
         jdbc.update("update ums_profile_bindings set avatar_reference = 'opaque-avatar-reference'")
         assertThat(final(1).outcome).isEqualTo(GlobalDeletionOutcome.CONTENT_BLOCKED)
+        assertThat(jdbc.queryForList("select action from ums_profile_lifecycle_evidence", String::class.java))
+            .contains("GLOBAL_FINAL_BLOCKED")
         assertThat(jdbc.queryForObject("select lifecycle from ums_profile_bindings", String::class.java))
             .isEqualTo("ACTIVE")
         jdbc.update("update ums_profile_bindings set avatar_reference = null")

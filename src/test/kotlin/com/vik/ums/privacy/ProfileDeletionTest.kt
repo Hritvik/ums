@@ -144,7 +144,8 @@ class ProfileDeletionTest {
     }
 
     @Test fun `cancel does not reopen closed profile`() {
-        jdbc.update("update ums_profile_bindings set lifecycle='CLOSED', readiness='PROFILE_REQUIRED'")
+        jdbc.update("""update ums_profile_bindings set lifecycle='CLOSED', readiness='PROFILE_REQUIRED',
+            closure_present=true, closure_at=now(), closure_retain_until=now() + interval '90 days'""")
         val accepted = deletion.request(authority(), DeletionRequestCommand(UUID.randomUUID(), 1, "privacy"))
         deletion.cancel(authority(PrivacyPurpose.CANCEL_DELETION),
             DeletionCancellationCommand(accepted.operationReference, UUID.randomUUID(), 2, "privacy"))

@@ -49,11 +49,12 @@ class ProfileGlobalDeletionService(
                 fact.sourceRevision <= persistence.globalSourceRevision(fact.scope)) {
                 return@execute GlobalDeletionResult(GlobalDeletionOutcome.STALE, current)
             }
-            persistence.replaceGlobalCause(fact.scope, fact.sourceRevision, fact.acceptedAt, fact.deadline)
             val revision = Math.addExact(current.bindingRevision.toLong(), 1)
-            check(persistence.pendingTransition(fact.scope, fact.sourceRevision, revision)) {
-                "Global pending revision changed under the lock"
+            if (!persistence.pendingTransition(fact.scope, fact.sourceRevision, revision,
+                    current.bindingRevision.toLong())) {
+                return@execute GlobalDeletionResult(GlobalDeletionOutcome.STALE, current)
             }
+            persistence.replaceGlobalCause(fact.scope, fact.sourceRevision, fact.acceptedAt, fact.deadline)
             val after = bindings.binding(fact.scope)!!
             events.emit(after, "DELETION_REQUESTED", fact.eventId, fact.correlationId)
             // Only an obligation earlier than the retention deadline supersedes its notices.
@@ -79,13 +80,14 @@ class ProfileGlobalDeletionService(
             persistence.deleteGlobalCause(fact.scope)
             val lifecycleName = when {
                 current.deletionCauses.appOnly != null -> Lifecycle.DELETION_PENDING
-                persistence.closurePresent(fact.scope) -> Lifecycle.CLOSED
+                persistence.liveClosure(fact.scope) -> Lifecycle.CLOSED
                 else -> Lifecycle.ACTIVE
             }
             val readiness = if (lifecycleName == Lifecycle.ACTIVE) readiness(fact.scope, policy)
             else Readiness.PROFILE_REQUIRED
-            check(persistence.cancelTransition(fact.scope, fact.sourceRevision, lifecycleName.name, readiness.name)) {
-                "Global cancellation revision changed under the lock"
+            if (!persistence.cancelTransition(fact.scope, fact.sourceRevision, lifecycleName.name,
+                    readiness.name, current.bindingRevision.toLong())) {
+                return@execute GlobalDeletionResult(GlobalDeletionOutcome.STALE, current)
             }
             val after = bindings.binding(fact.scope)!!
             events.emit(after, "DELETION_CANCELLED", fact.eventId, fact.correlationId)
@@ -110,6 +112,10 @@ class ProfileGlobalDeletionService(
                 return@execute GlobalDeletionResult(GlobalDeletionOutcome.STALE, current)
             }
             if (!contentAuthorized(fact.scope)) {
+                // An authoritative final is never silently dropped: keep durable evidence of the
+                // blocked obligation until the content owner confirms cleanup.
+                lifecycle.recordEvidence(fact.scope, "GLOBAL_FINAL_BLOCKED", current.bindingRevision.toLong(),
+                    fact.occurredAt, null, clock.instant(), fact.eventId, fact.correlationId)
                 return@execute GlobalDeletionResult(GlobalDeletionOutcome.CONTENT_BLOCKED, current)
             }
             val revision = Math.addExact(current.bindingRevision.toLong(), 1)
@@ -117,8 +123,9 @@ class ProfileGlobalDeletionService(
                 current.deletionCauses.appOnly?.let {
                     mapOf("type" to "APP_ONLY", "reference" to it.requestReference.toString())
                 }))
-            check(persistence.eraseGlobal(fact.scope, fact.sourceRevision, revision)) {
-                "Global final revision changed under the lock"
+            if (!persistence.eraseGlobal(fact.scope, fact.sourceRevision, revision,
+                    current.bindingRevision.toLong())) {
+                return@execute GlobalDeletionResult(GlobalDeletionOutcome.STALE, current)
             }
             deleteAllCauses(fact.scope)
             markPendingRequestsSuperseded(fact.scope)

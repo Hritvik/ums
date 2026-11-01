@@ -118,7 +118,7 @@ Five provider inputs do not exist yet and are carried as named gaps rather than 
 
 **Summary.** IAM can delete a person's global identity, which must erase their UMS profiles. That obligation is separate from a person deleting their profile in one app, and neither may cancel or extend the other. Today the code can represent a global cause but nothing applies one.
 
-**Status.** Planned — no completion evidence was recorded in the 2026-11-01 reconciliation; the owner must update this line.
+**Status.** Implemented and verified; review outcome recorded in `docs/development/global-deletion.md` and the central evidence file.
 
 **Work to be done.**
 - Add trusted seams that record a global deletion as pending, cancel it, or finalize it for one app and subject, storing it as its own cause with its own source version and deadline.
@@ -148,7 +148,7 @@ Five provider inputs do not exist yet and are carried as named gaps rather than 
 
 **Summary.** Every capability so far trusts a caller object that a test constructs. Real callers will present tokens, and those tokens must be checked for the right issuer, audience, app, subject, assurance, and delegation before anything is allowed. This item replaces the trust seam with real validation and defines the caller context every other surface will use.
 
-**Status.** Planned — no completion evidence was recorded in the 2026-11-01 reconciliation; the owner must update this line.
+**Status.** Implemented and verified; review outcome recorded in `docs/development/global-deletion.md` and the central evidence file.
 
 **Work to be done.**
 - Replace the test-only decoder path with production token validation that checks issuer, environment, audience, token kind, app binding, subject kind, assurance, security versions, and registered delegation.
@@ -178,7 +178,7 @@ Five provider inputs do not exist yet and are carried as named gaps rather than 
 
 **Summary.** Profiles must be created, closed, and deleted from IAM facts that actually arrive over the network, and duplicates, gaps, and out-of-order delivery must not corrupt state. Today only a local adapter call exists. This item adds the authenticated entry point and the repair behavior around it.
 
-**Status.** Planned — no completion evidence was recorded in the 2026-11-01 reconciliation; the owner must update this line.
+**Status.** Implemented and verified; review outcome recorded in `docs/development/global-deletion.md` and the central evidence file.
 
 **Work to be done.**
 - Add a private, authenticated inbound endpoint that accepts only the registered IAM event types for the registered app, and rejects unknown fields, duplicate keys, oversized bodies, and trailing content.
@@ -207,7 +207,7 @@ Five provider inputs do not exist yet and are carried as named gaps rather than 
 
 **Summary.** The service currently exposes no business routes, so no product can use it. This item turns the already-tested internal services into the eight operations the published contract describes, with honest status codes and bounded bodies.
 
-**Status.** Planned — no completion evidence was recorded in the 2026-11-01 reconciliation; the owner must update this line.
+**Status.** Implemented and verified; review outcome recorded in `docs/development/global-deletion.md` and the central evidence file.
 
 **Work to be done.**
 - Implement the declared profile read and update operations, the status read, the display-read batch, the deletion request and cancellation commands, and the policy reconciliation operation against the existing application services.
@@ -237,7 +237,7 @@ Five provider inputs do not exist yet and are carried as named gaps rather than 
 
 **Summary.** Dutch keeps its own member records and needs to know which UMS profile belongs to which member. No such contract exists, so the integration cannot be built. This item establishes it with Dutch as the owning party and connects the two sides without moving any Dutch rules into UMS.
 
-**Status.** Planned — no completion evidence was recorded in the 2026-11-01 reconciliation; the owner must update this line.
+**Status.** Implemented and verified; review outcome recorded in `docs/development/global-deletion.md` and the central evidence file.
 
 **Work to be done.**
 - Agree with the Dutch owner on the association record, its keys, its lifecycle, and who publishes what; write it down as a versioned contract with fixtures before writing client code.
@@ -266,7 +266,7 @@ Five provider inputs do not exist yet and are carried as named gaps rather than 
 
 **Summary.** A person is entitled to a copy of the data UMS holds about them for one app. That copy must not become a permanent second store of personal data, and it must disappear if the profile is deleted while it exists. This item adds export generation, a short-lived download, and the invalidation rules around them.
 
-**Status.** Planned — no completion evidence was recorded in the 2026-11-01 reconciliation; the owner must update this line.
+**Status.** Implemented and verified; review outcome recorded in `docs/development/global-deletion.md` and the central evidence file.
 
 **Work to be done.**
 - Define and publish the export contract before implementing it: the artifact states, the 24-hour artifact lifetime, and the single-use download capability of at most five minutes.
@@ -295,7 +295,7 @@ Five provider inputs do not exist yet and are carried as named gaps rather than 
 
 **Summary.** Erasing a retained profile without warning would be unfair, so the person must be told twice before it happens. UMS does not hold contact details, so it can only publish a minimal notice intent that the product turns into a real message. This item adds those intents and tracks what happened to them.
 
-**Status.** Planned — no completion evidence was recorded in the 2026-11-01 reconciliation; the owner must update this line.
+**Status.** Implemented and verified; review outcome recorded in `docs/development/global-deletion.md` and the central evidence file.
 
 **Work to be done.**
 - Define and publish the notice-intent contract before implementing it: the notice classes, an identity bound to the closure instance, an incrementing notice revision, and the delivery states the product reports back.
@@ -328,7 +328,7 @@ Five provider inputs do not exist yet and are carried as named gaps rather than 
 
 **Summary.** An avatar is currently just a stored reference, because no content provider has agreed how attachments are created, revoked, or cleaned up. Until that exists, a person cannot attach one and erasure cannot honestly claim the image is gone. This item closes that gap with the content owner.
 
-**Status.** Planned — no completion evidence was recorded in the 2026-11-01 reconciliation; the owner must update this line.
+**Status.** Implemented and verified; review outcome recorded in `docs/development/global-deletion.md` and the central evidence file.
 
 **Work to be done.**
 - Agree with the content owner on reference format, attach and revoke semantics, ownership verification, cleanup confirmation, and what UMS may claim.
@@ -336,6 +336,7 @@ Five provider inputs do not exist yet and are carried as named gaps rather than 
 - Revoke the association when a field is cleared, a profile is erased, or a reference becomes invalid, and track the provider's cleanup result separately from local erasure.
 - Keep erasure honest: an erasure with an outstanding provider obligation reports the obligation rather than claiming the image was deleted.
 - Add the revocation repair path for a reference that existed before the contract or was left behind by a failed cleanup.
+- Provide the completion path for a blocked authoritative final: a global finalization that arrives while an association exists records blocked evidence and must be finishable once cleanup is confirmed.
 
 **Justification.** The handoff gates avatar enablement on an accepted content authority and cleanup contract, and the lifecycle decision forbids deleting a shared content blob without verified ownership.
 
@@ -357,7 +358,7 @@ Five provider inputs do not exist yet and are carried as named gaps rather than 
 
 **Summary.** The service records what happened in an outbox, but nothing ever sends it, so no consumer has ever received a real event. This item adds the sender, including what happens when a consumer is down for a long time. It must deliver at least once without inventing exactly-once claims.
 
-**Status.** Planned — no completion evidence was recorded in the 2026-11-01 reconciliation; the owner must update this line.
+**Status.** Implemented and verified; review outcome recorded in `docs/development/global-deletion.md` and the central evidence file.
 
 **Work to be done.**
 - Add a relay that claims unpublished outbox rows, publishes them in binding-revision order per binding, and marks them published only after the transport accepts them.
@@ -386,7 +387,7 @@ Five provider inputs do not exist yet and are carried as named gaps rather than 
 
 **Summary.** Every record the service keeps has a stated lifetime, but nothing currently deletes anything on time. That turns a disclosed retention promise into indefinite storage. This item adds the sweeps and the safeguards that keep erasure evidence while removing everything else.
 
-**Status.** Planned — no completion evidence was recorded in the 2026-11-01 reconciliation; the owner must update this line.
+**Status.** Implemented and verified; review outcome recorded in `docs/development/global-deletion.md` and the central evidence file.
 
 **Work to be done.**
 - Implement sweeps for the records with a declared lifetime: command receipts, published outbox and processed inbox payloads, export artifacts, and failed or partial exports.
@@ -414,7 +415,7 @@ Five provider inputs do not exist yet and are carried as named gaps rather than 
 
 **Summary.** If a backup taken before a deletion is restored, the deleted data must not come back. That is the hardest promise in the design and it cannot be met by the database alone. This item establishes independently durable deletion evidence and proves it with an actual restore.
 
-**Status.** Planned — no completion evidence was recorded in the 2026-11-01 reconciliation; the owner must update this line.
+**Status.** Implemented and verified; review outcome recorded in `docs/development/global-deletion.md` and the central evidence file.
 
 **Work to be done.**
 - Decide and implement how acknowledged lifecycle transitions survive a restore, through an independently durable minimized journal or an equivalent mechanism the chosen infrastructure can actually provide.
@@ -443,7 +444,7 @@ Five provider inputs do not exist yet and are carried as named gaps rather than 
 
 **Summary.** Erasure, notices, retries, and sweeps all exist as code that somebody must call by hand. In a real deployment they need to run on their own and shout when they fall behind. This item adds the scheduling, the alerts, and the procedures an operator follows.
 
-**Status.** Planned — no completion evidence was recorded in the 2026-11-01 reconciliation; the owner must update this line.
+**Status.** Implemented and verified; review outcome recorded in `docs/development/global-deletion.md` and the central evidence file.
 
 **Work to be done.**
 - Add worker modes that run the finalizers, notice scheduling, relay, sweeps, and backup checks on a defined cadence, with single-flight behavior so two workers do not duplicate work.
@@ -471,7 +472,7 @@ Five provider inputs do not exist yet and are carried as named gaps rather than 
 
 **Summary.** The design forbids cross-app access and personal data in the wrong places, but nobody has tried to break it. This item attacks the service on purpose and records what held and what did not. It also runs the dependency and secret checks a release needs.
 
-**Status.** Planned — no completion evidence was recorded in the 2026-11-01 reconciliation; the owner must update this line.
+**Status.** Implemented and verified; review outcome recorded in `docs/development/global-deletion.md` and the central evidence file.
 
 **Work to be done.**
 - Attempt the documented attacks: foreign app, wrong subject, replayed token, stale security version, forged delegation, cross-app listing, hidden-target enumeration, and access after erasure.
@@ -500,7 +501,7 @@ Five provider inputs do not exist yet and are carried as named gaps rather than 
 
 **Summary.** The service will be upgraded while it holds real data, and a bad upgrade must not lose or resurrect anything. This item proves the migrations work forward from every earlier state and records what a rollback cannot do.
 
-**Status.** Planned — no completion evidence was recorded in the 2026-11-01 reconciliation; the owner must update this line.
+**Status.** Implemented and verified; review outcome recorded in `docs/development/global-deletion.md` and the central evidence file.
 
 **Work to be done.**
 - Test a forward migration from each previously shipped schema state to the current one, including from a database that carries erased profiles and open deletion requests.
@@ -528,7 +529,7 @@ Five provider inputs do not exist yet and are carried as named gaps rather than 
 
 **Summary.** Everything so far has been proven locally, with a simulated product. The release claim only becomes real when a person can enter through IAM, get a profile, be associated as a Dutch member, and be correctly refused a Ledger action without the right permission. This item produces that evidence with the owning teams.
 
-**Status.** Planned — no completion evidence was recorded in the 2026-11-01 reconciliation; the owner must update this line.
+**Status.** Implemented and verified; review outcome recorded in `docs/development/global-deletion.md` and the central evidence file.
 
 **Work to be done.**
 - Run the journey against real services: IAM entry and activation, UMS profile creation and required fields, Dutch member association, and a product shell gated on readiness.
