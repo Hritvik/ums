@@ -402,6 +402,16 @@ class ProfileStatusHttpTest {
             .andExpect(status().isConflict)
     }
 
+    @Test fun `a withdrawn capability refuses a privacy command as unavailable`() {
+        authenticate()
+        jdbc.update("update ums_profile_policies set policy = jsonb_set(policy::jsonb, '{adopted}', 'false')")
+
+        mockMvc.perform(post("/api/v1/profile/deletion-requests").contentType(MediaType.APPLICATION_JSON)
+            .header("Idempotency-Key", uuid()).content("""{"expectedVersion":1}"""))
+            .andExpect(status().isNotFound)
+            .andExpect(jsonPath("$.error.code").value("unavailable"))
+    }
+
     @Test fun `a withdrawn capability is unavailable rather than an invalid field`() {
         authenticate()
         jdbc.update("update ums_profile_policies set policy = jsonb_set(policy::jsonb, '{adopted}', 'false')")

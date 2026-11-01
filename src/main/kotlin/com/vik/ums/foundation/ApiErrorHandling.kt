@@ -46,14 +46,23 @@ class ApiExceptionHandler {
         val correlation = SafeErrors.correlation(response, request)
         if (exception is org.springframework.web.ErrorResponse) {
             val status = exception.statusCode
-            val code = when (status.value()) {
-                400, 405, 406, 415 -> "malformed_input"
-                404 -> "unavailable"
-                429 -> "rate_limited"
+            val code = when {
+                status.value() == 404 -> "unavailable"
+                status.value() == 409 -> "version_conflict"
+                status.value() == 429 -> "rate_limited"
+                status.is4xxClientError -> "malformed_input"
                 else -> "internal_error"
             }
-            val message = if (code == "unavailable") "The target is unavailable"
-            else "The request could not be completed"
+            if (exception is org.springframework.web.HttpRequestMethodNotSupportedException) {
+                exception.supportedHttpMethods?.takeIf { it.isNotEmpty() }
+                    ?.let { response.setHeader("Allow", it.joinToString(", ")) }
+            }
+            val message = when (code) {
+                "unavailable" -> "The target is unavailable"
+                "version_conflict" -> "The resource changed"
+                "rate_limited" -> "The request rate limit was exceeded"
+                else -> "The request could not be completed"
+            }
             return ResponseEntity.status(status).body(SafeErrors.body(code, message, correlation))
         }
         return ResponseEntity.status(500)

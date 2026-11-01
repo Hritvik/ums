@@ -44,9 +44,6 @@ mapping is never repaired here.
 - **Deletion, not export.** Export artifacts, display batches, and policy reconciliation are
   still unimplemented; every other route stays denied.
 - **Internal routes not built.** Display-read batches, policy reconciliation, and the snapshot read require a registered workload token profile that IAM has not published. Building them against human tokens would invent an authority model.
-- **Contract correction needed.** The OpenAPI declares the status read on the collection
-  without a parameter while the status DTO requires an operation reference. The implementation
-  accepts `?operationReference=…` and the contract should declare it.
 - **No registration administration.** Registrations are configuration files, not an API.
 - **No rate limiting.** Bounds exist per request, but no per-app/actor quota or backpressure
   is enforced yet.
@@ -54,8 +51,6 @@ mapping is never repaired here.
   from the registered app and client. It is not an IAM identity and must not be exported.
 - **No DPoP proof verification.** The token's confirmation key is validated for shape only;
   proof-of-possession belongs with the ingress transport.
-- **No rate limits or request-size enforcement** at the HTTP layer yet; the service-level
-  bounds exist, but the surface does not yet reject oversized bodies.
 
 ## Verification
 
@@ -70,11 +65,12 @@ profiles.
 
 Every response, including framework-level 401/403, unsupported media types, and unhandled
 500/503, uses the contract's safe error envelope with a correlation id; a database outage
-answers `503 temporarily_unavailable` with `Retry-After` rather than leaking a stack trace. Recent-Strong authority keeps a one-second margin so the
-service's own clock re-sample cannot flip an accepted command to denied.
+answers `503 temporarily_unavailable` with `Retry-After` rather than leaking a stack trace.
+Recent-Strong authority uses the same acceptance rule as the service, so a boundary denial is
+a consistent `403`.
 
-At this commit `check bootJar` passes with 221 JVM tests, 7 contract tests, 22 producer
-checks, 96.8% line and 80.1% branch coverage. The application context test proves the shipped route is the
+At this commit `check bootJar` passes with 223 JVM tests, 7 contract tests, 22 producer
+checks, 96.9% line and 80.3% branch coverage. The application context test proves the shipped route is the
 only permitted business route.
 
 RED evidence: the first wiring attempt registered the authority filter twice and returned

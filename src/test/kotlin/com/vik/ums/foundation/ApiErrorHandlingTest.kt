@@ -32,7 +32,7 @@ class ApiErrorHandlingTest {
 
         assertThat(result.statusCode.value()).isEqualTo(503)
         assertThat(response.getHeader("Retry-After")).isEqualTo("5")
-        assertThat(response.contentAsString).isEmpty()
+        assertThat((result.body as Map<*, *>)["error"].toString()).contains("temporarily_unavailable")
     }
 
     @Test fun `unhandled failures answer a safe internal error`() {
@@ -42,6 +42,15 @@ class ApiErrorHandlingTest {
         assertThat(result.statusCode.value()).isEqualTo(500)
         assertThat((result.body as Map<*, *>)["correlationId"]).isNotNull()
         assertThat(result.body.toString()).doesNotContain("secret internal detail")
+    }
+
+    @Test fun `method not allowed keeps its status and Allow header`() {
+        val notAllowed = org.springframework.web.HttpRequestMethodNotSupportedException("PUT", listOf("GET", "POST"))
+        val result = ApiExceptionHandler().internal(notAllowed, request, response)
+
+        assertThat(result.statusCode.value()).isEqualTo(405)
+        assertThat(response.getHeader("Allow")).contains("GET").contains("POST")
+        assertThat((result.body as Map<*, *>)["error"].toString()).contains("malformed_input")
     }
 
     @Test fun `unsupported media types keep their 4xx meaning`() {
