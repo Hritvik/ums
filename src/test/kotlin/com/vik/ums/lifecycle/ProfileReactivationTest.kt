@@ -87,7 +87,10 @@ class ProfileReactivationTest {
         assertThat(state.nextActions).isEmpty()
         assertThat(jdbc.queryForObject("select closure_retain_until is null from ums_profile_bindings", Boolean::class.java))
             .isTrue()
-        assertThat(jdbc.queryForObject("select closure_present from ums_profile_bindings", Boolean::class.java)).isTrue()
+        // Closure history lives in lifecycle evidence; the live-closure flag is cleared.
+        assertThat(jdbc.queryForObject("select closure_present from ums_profile_bindings", Boolean::class.java)).isFalse()
+        assertThat(jdbc.queryForList("select action from ums_profile_lifecycle_evidence order by action", String::class.java))
+            .containsExactly("CLOSED", "REACTIVATED")
 
         val display = editing.display(TrustedHumanAuthority(scope, UUID.randomUUID(), setOf(HumanAction.READ)))
         assertThat(display.fields[ProfileField.DISPLAY_NAME.wireName]).isEqualTo("Ada")

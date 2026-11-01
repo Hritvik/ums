@@ -117,8 +117,13 @@ internal class PrivacyPersistence(private val jdbc: JdbcTemplate) {
         }, scope.issuerEnvironmentRef, scope.appReference, scope.subjectReference, request.reference).singleOrNull() == true
     }
 
-    /** A closure that still has a live retention deadline. The historical flag is sticky across reactivation. */
+    /** A closure that still has a live retention deadline. */
     fun liveClosure(scope: ProfileScope): Boolean = jdbc.queryForObject("""select closure_retain_until is not null
+        from ums_profile_bindings where issuer_environment_ref = ? and app_reference = ? and subject_reference = ?""",
+        Boolean::class.java, scope.issuerEnvironmentRef, scope.appReference, scope.subjectReference)!!
+
+    /** A legacy retained restriction with no recorded deadline stays closed (fail closed). */
+    fun legacyClosure(scope: ProfileScope): Boolean = jdbc.queryForObject("""select closure_present
         from ums_profile_bindings where issuer_environment_ref = ? and app_reference = ? and subject_reference = ?""",
         Boolean::class.java, scope.issuerEnvironmentRef, scope.appReference, scope.subjectReference)!!
 

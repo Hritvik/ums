@@ -77,10 +77,9 @@ class ProfileGlobalDeletionService(
                 current.deletionCauses.iamGlobal == null) {
                 return@execute GlobalDeletionResult(GlobalDeletionOutcome.STALE, current)
             }
-            persistence.deleteGlobalCause(fact.scope)
             val lifecycleName = when {
                 current.deletionCauses.appOnly != null -> Lifecycle.DELETION_PENDING
-                persistence.liveClosure(fact.scope) -> Lifecycle.CLOSED
+                persistence.liveClosure(fact.scope) || persistence.legacyClosure(fact.scope) -> Lifecycle.CLOSED
                 else -> Lifecycle.ACTIVE
             }
             val readiness = if (lifecycleName == Lifecycle.ACTIVE) readiness(fact.scope, policy)
@@ -89,6 +88,7 @@ class ProfileGlobalDeletionService(
                     readiness.name, current.bindingRevision.toLong())) {
                 return@execute GlobalDeletionResult(GlobalDeletionOutcome.STALE, current)
             }
+            persistence.deleteGlobalCause(fact.scope)
             val after = bindings.binding(fact.scope)!!
             events.emit(after, "DELETION_CANCELLED", fact.eventId, fact.correlationId)
             if (lifecycleName == Lifecycle.CLOSED) {

@@ -48,16 +48,17 @@ dropped; completing a blocked final is a content-cleanup obligation.
 
 On 1 November 2026, `./gradlew clean check bootJar --no-daemon --console=plain`
 passed with the JDK 21 and Colima settings in [foundation](foundation.md):
-145 JVM tests, zero failures/errors/skips, seven contract-suite tests, and
-twenty-two producer/input checks. JaCoCo reported 98.2% line and 82.4% branch
+148 JVM tests, zero failures/errors/skips, seven contract-suite tests, and
+twenty-two producer/input checks. JaCoCo reported 98.2% line and 82.5% branch
 coverage without exclusions.
 
-Eleven PostgreSQL tests cover immediate restriction and the provider deadline,
+Fourteen PostgreSQL tests cover immediate restriction and the provider deadline,
 both cause orders, cancellation of each cause, re-arming notices on cancellation,
-a cancellation that must not resurrect a dead closure, immediate finalization with
-a superseded request, replayed and stale revisions leaving state untouched,
-concurrent finals, a later obligation leaving retention notices intact, and
-absent, erased, and content-blocked cases.
+cancellations that must not resurrect a dead closure or reopen a reactivated
+profile, a legacy retained restriction staying closed, immediate finalization
+with a superseded request, replayed and stale revisions leaving state untouched,
+concurrent finals, idempotent redelivery of a blocked final, a later obligation
+leaving retention notices intact, and absent, erased, and content-blocked cases.
 
 RED evidence: the tests first failed to compile because the service and models did
 not exist, and one test initially encoded a wrong expectation about equal

@@ -33,8 +33,8 @@ internal class LifecyclePersistence(private val jdbc: JdbcTemplate) {
     /** Reopens a closed profile only; retention is cleared but closure history is retained. */
     fun reactivate(scope: ProfileScope, readiness: String): Boolean =
         jdbc.update("""update ums_profile_bindings set lifecycle = 'ACTIVE', readiness = ?,
-            binding_revision = binding_revision + 1, closure_at = null, closure_retain_until = null,
-            closure_reference = null
+            binding_revision = binding_revision + 1, closure_present = false,
+            closure_at = null, closure_retain_until = null, closure_reference = null
             where issuer_environment_ref = ? and app_reference = ? and subject_reference = ? and lifecycle = 'CLOSED'""",
             readiness, scope.issuerEnvironmentRef, scope.appReference, scope.subjectReference) == 1
 
@@ -91,7 +91,9 @@ internal class LifecyclePersistence(private val jdbc: JdbcTemplate) {
         jdbc.update("""insert into ums_profile_lifecycle_evidence
             (evidence_reference, issuer_environment_ref, app_reference, subject_reference, action,
              binding_revision, effective_at, retain_until, occurred_at, causation_event_id, correlation_id)
-            values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            on conflict (issuer_environment_ref, app_reference, subject_reference, action, causation_event_id)
+            do nothing""",
             UUID.randomUUID(), scope.issuerEnvironmentRef, scope.appReference, scope.subjectReference,
             action, bindingRevision, Timestamp.from(effectiveAt), retainUntil?.let(Timestamp::from),
             Timestamp.from(occurredAt), eventId, correlationId)

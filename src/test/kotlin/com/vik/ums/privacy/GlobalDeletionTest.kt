@@ -234,6 +234,49 @@ class GlobalDeletionTest {
         assertThat(jdbc.queryForObject("select count(*) from ums_event_outbox", Int::class.java)).isEqualTo(2)
     }
 
+    @Test fun `a legacy retained restriction stays closed after cancellation`() {
+        jdbc.update("""update ums_profile_bindings set lifecycle = 'CLOSED', readiness = 'PROFILE_REQUIRED',
+            closure_present = true, closure_at = null, closure_retain_until = null""")
+        val actor = TrustedPrivacyAuthority(scope, UUID.randomUUID(), PrivacyPurpose.REQUEST_DELETION,
+            clock.instant(), true, clock.instant().plus(Duration.ofMinutes(10)))
+        val accepted = deletion.request(actor, DeletionRequestCommand(UUID.randomUUID(), 1, "privacy"))
+
+        deletion.cancel(TrustedPrivacyAuthority(scope, UUID.randomUUID(), PrivacyPurpose.CANCEL_DELETION,
+            clock.instant(), true, clock.instant().plus(Duration.ofMinutes(10))),
+            DeletionCancellationCommand(accepted.operationReference, UUID.randomUUID(), 2, "privacy"))
+
+        // No deadline is known, so the restriction must not be lifted silently.
+        assertThat(jdbc.queryForObject("select lifecycle from ums_profile_bindings", String::class.java))
+            .isEqualTo("CLOSED")
+    }
+
+    @Test fun `app-only cancellation does not reopen a reactivated profile`() {
+        closure.close(TrustedClosureFact(scope, clock.instant(), UUID.randomUUID(), "lifecycle"))
+        reactivation.reactivate(TrustedReactivationFact(scope, UUID.randomUUID(), "lifecycle"))
+        val actor = TrustedPrivacyAuthority(scope, UUID.randomUUID(), PrivacyPurpose.REQUEST_DELETION,
+            clock.instant(), true, clock.instant().plus(Duration.ofMinutes(10)))
+        val accepted = deletion.request(actor, DeletionRequestCommand(UUID.randomUUID(), 3, "privacy"))
+
+        deletion.cancel(TrustedPrivacyAuthority(scope, UUID.randomUUID(), PrivacyPurpose.CANCEL_DELETION,
+            clock.instant(), true, clock.instant().plus(Duration.ofMinutes(10))),
+            DeletionCancellationCommand(accepted.operationReference, UUID.randomUUID(), 4, "privacy"))
+
+        assertThat(jdbc.queryForObject("select lifecycle from ums_profile_bindings", String::class.java))
+            .isEqualTo("ACTIVE")
+        assertThat(provisioning.status(app, scope).retentionDeadline).isNull()
+    }
+
+    @Test fun `a blocked final is idempotent under redelivery`() {
+        jdbc.update("update ums_profile_bindings set avatar_reference = 'opaque-avatar-reference'")
+        val fact = GlobalFinalFact(scope, 1, clock.instant(), UUID.randomUUID(), "global")
+
+        assertThat(global.finalize(provider, fact).outcome).isEqualTo(GlobalDeletionOutcome.CONTENT_BLOCKED)
+        assertThat(global.finalize(provider, fact).outcome).isEqualTo(GlobalDeletionOutcome.CONTENT_BLOCKED)
+
+        assertThat(jdbc.queryForObject("""select count(*) from ums_profile_lifecycle_evidence
+            where action = 'GLOBAL_FINAL_BLOCKED'""", Int::class.java)).isEqualTo(1)
+    }
+
     @Test fun `stale and replayed revisions change nothing`() {
         assertThat(pending(1).outcome).isEqualTo(GlobalDeletionOutcome.APPLIED)
         assertThat(cancel(1).outcome).isEqualTo(GlobalDeletionOutcome.STALE)

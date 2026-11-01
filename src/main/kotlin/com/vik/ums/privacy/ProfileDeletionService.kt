@@ -59,7 +59,7 @@ class ProfileDeletionService(
         persistence.cancel(authority.scope, request.reference)
         val lifecycle = when {
             before.deletionCauses.iamGlobal != null -> Lifecycle.DELETION_PENDING
-            persistence.liveClosure(authority.scope) -> Lifecycle.CLOSED
+            persistence.liveClosure(authority.scope) || persistence.legacyClosure(authority.scope) -> Lifecycle.CLOSED
             else -> Lifecycle.ACTIVE
         }
         val presentFields = fields.fields(authority.scope).keys
