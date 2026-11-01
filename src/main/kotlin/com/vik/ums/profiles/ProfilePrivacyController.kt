@@ -131,6 +131,8 @@ class ProfilePrivacyController(
         } catch (reused: IllegalArgumentException) {
             if (reused.message?.contains("idempotency") == true) {
                 failure(response, 409, "idempotency_key_reused", "The idempotency key was reused", correlation)
+            } else if (reused.message?.contains("capability", ignoreCase = true) == true) {
+                failure(response, 404, "unavailable", "Profile is unavailable", correlation)
             } else failure(response, 403, "forbidden", "Recent strong authentication is required", correlation)
         } catch (conflict: IllegalStateException) {
             val message = conflict.message.orEmpty()
@@ -149,9 +151,8 @@ class ProfilePrivacyController(
         if (caller.assurance != Assurance.STRONG) return null
         val authenticatedAt = caller.authenticatedAt ?: return null
         val now = clock.instant()
-        // Keep a margin so a re-sample inside the service cannot flip an accepted command to denied.
-        val acceptable = maximumStrongAge.minusSeconds(1).coerceAtLeast(Duration.ofSeconds(1))
-        if (authenticatedAt.isAfter(now) || Duration.between(authenticatedAt, now) > acceptable) return null
+        // Same acceptance rule as the service; a boundary denial is still 403, not a different class.
+        if (authenticatedAt.isAfter(now) || Duration.between(authenticatedAt, now) > maximumStrongAge) return null
         return TrustedPrivacyAuthority(scope, CallerActorReferences.of(caller), purpose,
             authenticatedAt, strong = true, expiresAt = authenticatedAt.plus(maximumStrongAge))
     }

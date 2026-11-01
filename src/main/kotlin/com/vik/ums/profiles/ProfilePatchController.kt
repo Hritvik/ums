@@ -51,7 +51,11 @@ class ProfilePatchController(
         val command = parse(body, idempotencyKey, correlation)
             ?: return failure(response, 400, "malformed_input", "The request body is malformed", correlation)
 
-        val status = provisioning.status(AppScope(scope.issuerEnvironmentRef, scope.appReference), scope)
+        val status = try {
+            provisioning.status(AppScope(scope.issuerEnvironmentRef, scope.appReference), scope)
+        } catch (unavailable: IllegalStateException) {
+            return failure(response, 404, "unavailable", "Profile is unavailable", correlation)
+        }
         if (status.state?.lifecycle != Lifecycle.ACTIVE) {
             return failure(response, 404, "unavailable", "Profile is unavailable", correlation)
         }

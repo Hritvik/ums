@@ -68,13 +68,13 @@ refusal for an unmapped caller, an idempotent update and its replay, distinct ve
 idempotency conflicts, malformed bodies, an invalid field value, and restricted or unmapped
 profiles.
 
-Every response, including framework-level 401/403 and unhandled 500/503, uses the contract's
-safe error envelope with a correlation id; a database outage answers `503 temporarily_unavailable`
-rather than leaking a stack trace. Recent-Strong authority keeps a one-second margin so the
+Every response, including framework-level 401/403, unsupported media types, and unhandled
+500/503, uses the contract's safe error envelope with a correlation id; a database outage
+answers `503 temporarily_unavailable` with `Retry-After` rather than leaking a stack trace. Recent-Strong authority keeps a one-second margin so the
 service's own clock re-sample cannot flip an accepted command to denied.
 
-At this commit `check bootJar` passes with 215 JVM tests, 7 contract tests, 22 producer
-checks, 96.6% line and 80.1% branch coverage. The application context test proves the shipped route is the
+At this commit `check bootJar` passes with 222 JVM tests, 7 contract tests, 22 producer
+checks, 96.8% line and 80.1% branch coverage. The application context test proves the shipped route is the
 only permitted business route.
 
 RED evidence: the first wiring attempt registered the authority filter twice and returned

@@ -199,6 +199,7 @@ class ProfileStatusHttpTest {
             """{"expectedVersion":1,"changes":{"unknownField":"x"}}""",
             """{"expectedVersion":1,"expectedVersion":1,"changes":{"displayName":"Ada"}}""",
             """{"expectedVersion":1,"changes":{}}""",
+            """{"expectedVersion":1,"changes":"not-an-object"}""",
             """{"expectedVersion":1,"changes":{"displayName":"Ada"}} trailing""",
         )
         cases.forEach { body ->
@@ -389,12 +390,26 @@ class ProfileStatusHttpTest {
             .andExpect(status().isAccepted)
 
         mockMvc.perform(get("/api/v1/profile")).andExpect(status().isNotFound)
+        mockMvc.perform(get("/api/v1/profile/status"))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.data.state.lifecycle").value("DELETION_PENDING"))
+            .andExpect(jsonPath("$.data.nextActions[0]").value("CANCEL_DELETION"))
         mockMvc.perform(patch("/api/v1/profile").contentType(MediaType.APPLICATION_JSON)
             .header("Idempotency-Key", uuid()).content(patchBody("Ada")))
             .andExpect(status().isNotFound)
         mockMvc.perform(post("/api/v1/profile/deletion-requests").contentType(MediaType.APPLICATION_JSON)
             .header("Idempotency-Key", uuid()).content("""{"expectedVersion":2}"""))
             .andExpect(status().isConflict)
+    }
+
+    @Test fun `a withdrawn capability is unavailable rather than an invalid field`() {
+        authenticate()
+        jdbc.update("update ums_profile_policies set policy = jsonb_set(policy::jsonb, '{adopted}', 'false')")
+
+        mockMvc.perform(patch("/api/v1/profile").contentType(MediaType.APPLICATION_JSON)
+            .header("Idempotency-Key", uuid()).content(patchBody("Ada")))
+            .andExpect(status().isNotFound)
+            .andExpect(jsonPath("$.error.code").value("unavailable"))
     }
 
     @Test fun `the strong-authentication window is exact`() {

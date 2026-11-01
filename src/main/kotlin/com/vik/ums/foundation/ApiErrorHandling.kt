@@ -34,13 +34,28 @@ class ApiExceptionHandler {
     @ExceptionHandler(DataAccessException::class)
     fun unavailable(request: HttpServletRequest, response: HttpServletResponse): ResponseEntity<Any> {
         val correlation = SafeErrors.correlation(response, request)
+        response.setHeader("Retry-After", "5")
         return ResponseEntity.status(503)
             .body(SafeErrors.body("temporarily_unavailable", "The service is temporarily unavailable", correlation))
     }
 
+    /** Framework exceptions carry a status; keep their 4xx meaning instead of flattening to 500. */
     @ExceptionHandler(Exception::class)
-    fun internal(request: HttpServletRequest, response: HttpServletResponse): ResponseEntity<Any> {
+    fun internal(exception: Exception, request: HttpServletRequest,
+                 response: HttpServletResponse): ResponseEntity<Any> {
         val correlation = SafeErrors.correlation(response, request)
+        if (exception is org.springframework.web.ErrorResponse) {
+            val status = exception.statusCode
+            val code = when (status.value()) {
+                400, 405, 406, 415 -> "malformed_input"
+                404 -> "unavailable"
+                429 -> "rate_limited"
+                else -> "internal_error"
+            }
+            val message = if (code == "unavailable") "The target is unavailable"
+            else "The request could not be completed"
+            return ResponseEntity.status(status).body(SafeErrors.body(code, message, correlation))
+        }
         return ResponseEntity.status(500)
             .body(SafeErrors.body("internal_error", "The request could not be completed", correlation))
     }
