@@ -73,7 +73,7 @@ Every response, including framework-level 401/403, unsupported media types, and 
 answers `503 temporarily_unavailable` with `Retry-After` rather than leaking a stack trace. Recent-Strong authority keeps a one-second margin so the
 service's own clock re-sample cannot flip an accepted command to denied.
 
-At this commit `check bootJar` passes with 222 JVM tests, 7 contract tests, 22 producer
+At this commit `check bootJar` passes with 221 JVM tests, 7 contract tests, 22 producer
 checks, 96.8% line and 80.1% branch coverage. The application context test proves the shipped route is the
 only permitted business route.
 
