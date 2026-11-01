@@ -32,7 +32,7 @@ class ApiErrorHandlingTest {
 
         assertThat(result.statusCode.value()).isEqualTo(503)
         assertThat(response.getHeader("Retry-After")).isEqualTo("5")
-        assertThat((result.body as Map<*, *>)["error"].toString()).contains("temporarily_unavailable")
+        assertThat(((result.body as Map<*, *>)["error"] as Map<*, *>)["code"]).isEqualTo("temporarily_unavailable")
     }
 
     @Test fun `unhandled failures answer a safe internal error`() {
@@ -44,13 +44,26 @@ class ApiErrorHandlingTest {
         assertThat(result.body.toString()).doesNotContain("secret internal detail")
     }
 
+    @Test fun `framework status codes map to their contract codes`() {
+        fun codeFor(status: org.springframework.http.HttpStatus): String {
+            val exception = org.springframework.web.server.ResponseStatusException(status)
+            val result = ApiExceptionHandler().internal(exception, request, MockHttpServletResponse())
+            return ((result.body as Map<*, *>)["error"] as Map<*, *>)["code"] as String
+        }
+        assertThat(codeFor(org.springframework.http.HttpStatus.UNAUTHORIZED)).isEqualTo("unauthenticated")
+        assertThat(codeFor(org.springframework.http.HttpStatus.FORBIDDEN)).isEqualTo("forbidden")
+        assertThat(codeFor(org.springframework.http.HttpStatus.CONFLICT)).isEqualTo("version_conflict")
+        assertThat(codeFor(org.springframework.http.HttpStatus.TOO_MANY_REQUESTS)).isEqualTo("rate_limited")
+        assertThat(codeFor(org.springframework.http.HttpStatus.UNPROCESSABLE_ENTITY)).isEqualTo("malformed_input")
+    }
+
     @Test fun `method not allowed keeps its status and Allow header`() {
         val notAllowed = org.springframework.web.HttpRequestMethodNotSupportedException("PUT", listOf("GET", "POST"))
         val result = ApiExceptionHandler().internal(notAllowed, request, response)
 
         assertThat(result.statusCode.value()).isEqualTo(405)
         assertThat(response.getHeader("Allow")).contains("GET").contains("POST")
-        assertThat((result.body as Map<*, *>)["error"].toString()).contains("malformed_input")
+        assertThat(((result.body as Map<*, *>)["error"] as Map<*, *>)["code"]).isEqualTo("malformed_input")
     }
 
     @Test fun `unsupported media types keep their 4xx meaning`() {
@@ -58,7 +71,7 @@ class ApiErrorHandlingTest {
         val result = ApiExceptionHandler().internal(unsupported, request, response)
 
         assertThat(result.statusCode.value()).isEqualTo(415)
-        assertThat((result.body as Map<*, *>)["error"].toString()).contains("malformed_input")
+        assertThat(((result.body as Map<*, *>)["error"] as Map<*, *>)["code"]).isEqualTo("malformed_input")
     }
 
     @Test fun `framework 4xx exceptions keep their status instead of becoming 500`() {
@@ -66,6 +79,6 @@ class ApiErrorHandlingTest {
         val result = ApiExceptionHandler().internal(notFound, request, response)
 
         assertThat(result.statusCode.value()).isEqualTo(404)
-        assertThat((result.body as Map<*, *>)["error"].toString()).contains("unavailable")
+        assertThat(((result.body as Map<*, *>)["error"] as Map<*, *>)["code"]).isEqualTo("unavailable")
     }
 }

@@ -47,6 +47,8 @@ class ApiExceptionHandler {
         if (exception is org.springframework.web.ErrorResponse) {
             val status = exception.statusCode
             val code = when {
+                status.value() == 401 -> "unauthenticated"
+                status.value() == 403 -> "forbidden"
                 status.value() == 404 -> "unavailable"
                 status.value() == 409 -> "version_conflict"
                 status.value() == 429 -> "rate_limited"
@@ -58,6 +60,8 @@ class ApiExceptionHandler {
                     ?.let { response.setHeader("Allow", it.joinToString(", ")) }
             }
             val message = when (code) {
+                "unauthenticated" -> "Authentication is required"
+                "forbidden" -> "The action is not permitted"
                 "unavailable" -> "The target is unavailable"
                 "version_conflict" -> "The resource changed"
                 "rate_limited" -> "The request rate limit was exceeded"

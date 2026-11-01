@@ -69,8 +69,8 @@ answers `503 temporarily_unavailable` with `Retry-After` rather than leaking a s
 Recent-Strong authority uses the same acceptance rule as the service, so a boundary denial is
 a consistent `403`.
 
-At this commit `check bootJar` passes with 223 JVM tests, 7 contract tests, 22 producer
-checks, 96.9% line and 80.3% branch coverage. The application context test proves the shipped route is the
+At this commit `check bootJar` passes with 224 JVM tests, 7 contract tests, 22 producer
+checks, 97.0% line and 80.7% branch coverage. The application context test proves the shipped route is the
 only permitted business route.
 
 RED evidence: the first wiring attempt registered the authority filter twice and returned

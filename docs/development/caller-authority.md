@@ -53,7 +53,7 @@ An unknown app/client pair is denied without revealing which side is wrong.
 
 ## Verification
 
-At this commit, `./gradlew clean check bootJar --no-daemon --console=plain` passed
+At the W-5 commit, `./gradlew clean check bootJar --no-daemon --console=plain` passed
 with 161 JVM tests, zero failures/skips, 7 contract tests, 22 producer checks, and
 97.8% line / 80.3% branch coverage.
 
