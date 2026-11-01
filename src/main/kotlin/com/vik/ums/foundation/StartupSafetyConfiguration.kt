@@ -1,6 +1,8 @@
 package com.vik.ums.foundation
 
+import com.vik.ums.iam.CallerRegistrations
 import java.net.URI
+import java.util.UUID
 import org.springframework.context.annotation.Configuration
 import org.springframework.core.env.Environment
 
@@ -19,6 +21,13 @@ class StartupSafetyConfiguration(environment: Environment) {
         }
         required(environment, "spring.datasource.username")
         required(environment, "spring.datasource.password")
+        require(required(environment, "ums.environment").matches(Regex("[a-z0-9-]{1,32}"))) {
+            "ums.environment must be a lowercase environment name"
+        }
+        // No default caller registrations and no guessed app binding.
+        CallerRegistrations.parse(required(environment, "ums.security.registrations"))
+        runCatching { UUID.fromString(required(environment, "ums.iam.issuer-environment-ref")) }
+            .getOrElse { throw IllegalArgumentException("ums.iam.issuer-environment-ref must be a UUID") }
     }
 
     private fun required(environment: Environment, property: String): String {

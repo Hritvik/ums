@@ -1,5 +1,9 @@
 package com.vik.ums.foundation
 
+import com.fasterxml.jackson.databind.ObjectMapper
+import com.vik.ums.iam.CallerRegistrations
+import com.vik.ums.iam.IamCallerResolver
+import com.vik.ums.profiles.ProfileScopeResolver
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
 import org.springframework.context.annotation.DependsOn
@@ -12,6 +16,8 @@ import org.springframework.security.oauth2.jwt.JwtDecoder
 import org.springframework.security.oauth2.jwt.JwtValidators
 import org.springframework.security.oauth2.jwt.NimbusJwtDecoder
 import org.springframework.security.web.SecurityFilterChain
+import org.springframework.jdbc.core.JdbcTemplate
+import java.util.UUID
 
 @Configuration(proxyBeanMethods = false)
 @DependsOn("startupSafetyConfiguration")
@@ -28,6 +34,22 @@ class SecurityConfiguration {
     }
 
     @Bean
+    fun callerRegistrations(environment: Environment): CallerRegistrations =
+        CallerRegistrations.parse(environment.getProperty("ums.security.registrations"))
+
+    @Bean
+    fun callerResolver(environment: Environment, registrations: CallerRegistrations): IamCallerResolver =
+        IamCallerResolver(environment.getRequiredProperty("ums.security.issuer"), registrations)
+
+    @Bean
+    fun callerAuthorityInterceptor(resolver: IamCallerResolver, mapper: ObjectMapper): CallerAuthorityInterceptor =
+        CallerAuthorityInterceptor(resolver, mapper)
+
+    @Bean
+    fun profileScopeResolver(jdbc: JdbcTemplate, environment: Environment): ProfileScopeResolver =
+        ProfileScopeResolver(jdbc, UUID.fromString(environment.getRequiredProperty("ums.iam.issuer-environment-ref")))
+
+    @Bean
     fun securityFilterChain(http: HttpSecurity): SecurityFilterChain = http
         // There is no browser session or cookie authentication in this resource server.
         .csrf { it.disable() }
@@ -35,6 +57,7 @@ class SecurityConfiguration {
         .requestCache { it.disable() }
         .authorizeHttpRequests {
             it.requestMatchers(HttpMethod.GET, "/actuator/health").permitAll()
+                .requestMatchers(HttpMethod.GET, "/api/v1/profile/status").authenticated()
                 .anyRequest().denyAll()
         }
         .oauth2ResourceServer { it.jwt {} }

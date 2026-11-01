@@ -43,6 +43,9 @@ Explicit deployment settings are required:
 - `UMS_DATABASE_USERNAME` and `UMS_DATABASE_PASSWORD`: externally supplied credentials.
 - `UMS_IAM_ISSUER` and `UMS_IAM_JWK_SET_URI`: HTTPS issuer and JWK location, without embedded credentials or fragments.
 - `UMS_RESOURCE_AUDIENCE`: the registered UMS resource audience.
+- `UMS_ENVIRONMENT`: the deployment environment name carried in emitted facts.
+- `UMS_IAM_ISSUER_ENVIRONMENT_REF`: the local reference for the IAM issuer environment.
+- `UMS_CALLER_REGISTRATIONS`: a JSON array of reviewed caller registrations; there is no default and no wildcard.
 - `SERVER_PORT`: optional, default 8080.
 
 There are no default database credentials, runtime test-authority mode, HTTP

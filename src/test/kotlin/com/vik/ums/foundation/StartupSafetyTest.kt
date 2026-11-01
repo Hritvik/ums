@@ -10,7 +10,11 @@ class StartupSafetyTest {
     private val requiredProperties = mapOf(
         "ums.security.issuer" to "https://iam.example.test",
         "ums.security.jwk-set-uri" to "https://iam.example.test/.well-known/jwks.json",
-        "ums.security.audience" to "ums",
+        "ums.security.audience" to "https://ums.example.test",
+        "ums.environment" to "test",
+        "ums.iam.issuer-environment-ref" to "6f1d4a2c-3b5e-4c7d-8a9b-0c1d2e3f4a5b",
+        "ums.security.registrations" to
+            """[{"appId":"dutch-development","clientId":"dutch-mobile","audience":"https://ums.example.test","allowedScopes":["profile:read"],"requiresDpop":true}]""",
         "spring.datasource.url" to "jdbc:postgresql://localhost:5432/ums",
         "spring.datasource.username" to "ums",
         "spring.datasource.password" to "test-only-password",
@@ -29,6 +33,7 @@ class StartupSafetyTest {
     @ParameterizedTest
     @ValueSource(strings = [
         "ums.security.issuer", "ums.security.jwk-set-uri", "ums.security.audience",
+        "ums.security.registrations", "ums.iam.issuer-environment-ref", "ums.environment",
         "spring.datasource.url", "spring.datasource.username", "spring.datasource.password",
     ])
     fun `blank mandatory setting fails startup without exposing credentials`(property: String) {

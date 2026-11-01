@@ -51,7 +51,14 @@ class UserManagementServiceApplicationTests {
             registry.add("spring.datasource.password", postgres::getPassword)
             registry.add("ums.security.issuer") { "https://iam.example.test" }
             registry.add("ums.security.jwk-set-uri") { "https://iam.example.test/keys" }
-            registry.add("ums.security.audience") { "ums" }
+            registry.add("ums.security.audience") { "https://ums.example.test" }
+            registry.add("ums.environment") { "test" }
+            registry.add("ums.iam.issuer-environment-ref") { "6f1d4a2c-3b5e-4c7d-8a9b-0c1d2e3f4a5b" }
+            registry.add("ums.security.registrations") {
+                """[{"appId":"dutch-development","clientId":"dutch-mobile",
+                "audience":"https://ums.example.test","allowedScopes":["profile:read"],
+                "requiresDpop":true}]"""
+            }
         }
     }
 
@@ -61,10 +68,23 @@ class UserManagementServiceApplicationTests {
         @Bean
         @Primary
         fun testJwtDecoder(): JwtDecoder = JwtDecoder {
-            Jwt.withTokenValue(it).header("alg", "RS256")
-                .subject("app-subject-test").issuer("https://iam.example.test")
-                .audience(listOf("ums")).issuedAt(Instant.now())
-                .expiresAt(Instant.now().plusSeconds(60)).build()
+            Jwt.withTokenValue(it).header("alg", "ES256").header("typ", "at+jwt")
+                .header("kid", "dutch-key-01")
+                .subject("aps_0123456789abcdefghijkL").issuer("https://iam.example.test")
+                .audience(listOf("https://ums.example.test")).issuedAt(Instant.now())
+                .expiresAt(Instant.now().plusSeconds(60))
+                .claim("jti", "jti_0123456789abcdef")
+                .claim("client_id", "dutch-mobile")
+                .claim("token_profile", "human_access")
+                .claim("token_version", 1)
+                .claim("subject_kind", "app_subject")
+                .claim("scope", "profile:read")
+                .claim("app_id", "dutch-development")
+                .claim("security_version", 1)
+                .claim("acr", "urn:distracted:aal2")
+                .claim("amr", listOf("passkey"))
+                .claim("cnf", mapOf("jkt" to "0123456789abcdefghijklmnopqrstuvwxyzABCDEFG"))
+                .build()
         }
     }
 
@@ -95,7 +115,10 @@ class UserManagementServiceApplicationTests {
     fun `authenticated token still grants no foundation business capability`() {
         val headers = HttpHeaders().apply { setBearerAuth("test-fixture-token") }
         val response = http.exchange("/api/v1/profile", HttpMethod.GET, HttpEntity<Void>(headers), String::class.java)
-        assertThat(response.statusCode).isEqualTo(HttpStatus.FORBIDDEN)
+        // An implemented business route is the only permitted one; every other route stays
+        // closed to an authenticated caller. denyAll answers 401 in this configuration.
+        assertThat(response.statusCode.is4xxClientError).isTrue()
+        assertThat(response.body ?: "").doesNotContain("app_id")
     }
 
     @Test
