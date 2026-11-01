@@ -14,6 +14,7 @@ identity/authentication; products retain their business data and permissions.
 - [Local erasure finalization](development/profile-erasure.md): Slice D2 deadline processing, replay fences, and local-completion limits.
 - [App-only deletion](development/profile-deletion.md): Slice D1 requests, cancellation, restricted status, and remaining privacy gates.
 - [Closure and retention](development/profile-closure.md): Slice D4–D5 app departure, the published 90-day deadline, and deliberate reactivation.
+- [Caller authority](development/caller-authority.md): Slice C1 provider token validation, tuple rules, and ingress limits.
 - [IAM-global deletion](development/global-deletion.md): Slice D7 independent global causes, stale rejection, and immediate final erasure.
 - [Retention notices](development/notices.md): Slice E1 notice intents, windows, delivery states, and suppression.
 - [Local Dutch consumer journey](development/dutch-consumer-journey.md): simulated consumer evidence and the real integration handoff.
