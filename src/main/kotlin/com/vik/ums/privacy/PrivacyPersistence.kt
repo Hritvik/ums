@@ -55,6 +55,54 @@ internal class PrivacyPersistence(private val jdbc: JdbcTemplate) {
             scope.issuerEnvironmentRef, scope.appReference, scope.subjectReference, reference)
     }
 
+    fun globalSourceRevision(scope: ProfileScope): Long = jdbc.queryForObject("""select global_source_revision
+        from ums_profile_bindings where issuer_environment_ref = ? and app_reference = ? and subject_reference = ?""",
+        Long::class.java, scope.issuerEnvironmentRef, scope.appReference, scope.subjectReference)!!
+
+    fun replaceGlobalCause(scope: ProfileScope, sourceRevision: Long, acceptedAt: Instant, deadline: Instant) {
+        deleteGlobalCause(scope)
+        jdbc.update("""insert into ums_profile_deletion_causes
+            (issuer_environment_ref, app_reference, subject_reference, cause_type, request_reference,
+             source_revision, accepted_at, deadline)
+            values (?, ?, ?, 'IAM_GLOBAL', ?, ?, ?, ?)""",
+            scope.issuerEnvironmentRef, scope.appReference, scope.subjectReference, UUID.randomUUID(),
+            sourceRevision, Timestamp.from(acceptedAt), Timestamp.from(deadline))
+    }
+
+    fun deleteGlobalCause(scope: ProfileScope) {
+        jdbc.update("""delete from ums_profile_deletion_causes where issuer_environment_ref = ?
+            and app_reference = ? and subject_reference = ? and cause_type = 'IAM_GLOBAL'""",
+            scope.issuerEnvironmentRef, scope.appReference, scope.subjectReference)
+    }
+
+    /** Returns false when the fact is not newer than the applied source revision. */
+    fun pendingTransition(scope: ProfileScope, sourceRevision: Long, revision: Long): Boolean =
+        jdbc.update("""update ums_profile_bindings set lifecycle = 'DELETION_PENDING', readiness = 'PROFILE_REQUIRED',
+            binding_revision = ?, global_source_revision = ?
+            where issuer_environment_ref = ? and app_reference = ? and subject_reference = ?
+            and lifecycle <> 'ERASED' and global_source_revision < ?""",
+            revision, sourceRevision, scope.issuerEnvironmentRef, scope.appReference, scope.subjectReference,
+            sourceRevision) == 1
+
+    fun cancelTransition(scope: ProfileScope, sourceRevision: Long, lifecycle: String, readiness: String): Boolean =
+        jdbc.update("""update ums_profile_bindings set lifecycle = ?, readiness = ?,
+            binding_revision = binding_revision + 1, global_source_revision = ?
+            where issuer_environment_ref = ? and app_reference = ? and subject_reference = ?
+            and lifecycle <> 'ERASED' and global_source_revision < ?""",
+            lifecycle, readiness, sourceRevision, scope.issuerEnvironmentRef, scope.appReference,
+            scope.subjectReference, sourceRevision) == 1
+
+    fun eraseGlobal(scope: ProfileScope, sourceRevision: Long, revision: Long): Boolean =
+        jdbc.update("""update ums_profile_bindings set lifecycle = 'ERASED', readiness = 'PROFILE_REQUIRED',
+            profile_reference = null, generation = null, profile_revision = null,
+            closure_present = false, closure_reference = null, closure_at = null, closure_retain_until = null,
+            display_name = null, avatar_reference = null, display_locale = null, display_timezone = null,
+            binding_revision = ?, global_source_revision = ?
+            where issuer_environment_ref = ? and app_reference = ? and subject_reference = ?
+            and lifecycle <> 'ERASED' and global_source_revision < ?""",
+            revision, sourceRevision, scope.issuerEnvironmentRef, scope.appReference, scope.subjectReference,
+            sourceRevision) == 1
+
     fun completedFence(scope: ProfileScope, request: StoredDeletionRequest, state: BindingState): Boolean {
         if (request.status != "LOCAL_COMPLETED" || state.lifecycle != com.vik.ums.profiles.Lifecycle.ERASED) return false
         return jdbc.query("""select f.retired_profile_reference, f.retired_generation, f.erased_binding_revision,
