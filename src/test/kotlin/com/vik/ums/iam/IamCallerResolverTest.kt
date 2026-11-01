@@ -70,6 +70,25 @@ class IamCallerResolverTest {
         assertThat(caller.assurance).isEqualTo(Assurance.STRONG)
         assertThat(caller.authenticationMethods).containsExactly("passkey")
         assertThat(caller.scopes).containsExactly("member:read")
+        assertThat(caller.tokenId).isEqualTo("jti_0123456789abcdef")
+    }
+
+    @Test fun `a decoder-shaped token with list audience and normalized timestamps resolves`() {
+        // Nimbus/Spring materialise aud as a one-element list and exp/iat as Instants.
+        val decoderClaims = claims.toMutableMap().apply {
+            put("aud", listOf("https://api.dutch.invalid"))
+            put("exp", Instant.ofEpochSecond((claims["exp"] as Number).toLong()))
+            put("iat", Instant.ofEpochSecond((claims["iat"] as Number).toLong()))
+        }.mapValues { it.value as Any }
+        val token = Jwt("token",
+            Instant.ofEpochSecond((claims["iat"] as Number).toLong()),
+            Instant.ofEpochSecond((claims["exp"] as Number).toLong()),
+            header, decoderClaims)
+
+        val caller = resolver.resolve(token)
+
+        assertThat(caller.appId).isEqualTo("dutch-development")
+        assertThat(caller.scopes).containsExactly("member:read")
     }
 
     @Test fun `every published rejected token fixture is denied`() {
@@ -124,8 +143,10 @@ class IamCallerResolverTest {
         assertThat(denial(jwtOf(with("security_version" to 0)))).isEqualTo(CallerDenial.MALFORMED_CLAIM)
         assertThat(denial(jwtOf(with("security_version" to 1e300)))).isEqualTo(CallerDenial.MALFORMED_CLAIM)
         assertThat(denial(jwtOf(with("auth_time" to 1e300)))).isEqualTo(CallerDenial.MALFORMED_CLAIM)
-        assertThat(denial(jwtOf(with("aud" to listOf("https://api.dutch.invalid")))))
+        assertThat(denial(jwtOf(with("aud" to listOf("https://api.dutch.invalid", "https://api.other.invalid")))))
             .isEqualTo(CallerDenial.AUDIENCE_MISMATCH)
+        assertThat(denial(jwtOf(with("cnf" to mapOf("jkt" to DPOP, "extra" to "value")))))
+            .isEqualTo(CallerDenial.MALFORMED_CLAIM)
         assertThat(denial(jwtOf(with("extra" to "value")))).isEqualTo(CallerDenial.MALFORMED_CLAIM)
     }
 
@@ -164,6 +185,7 @@ class IamCallerResolverTest {
         assertThat(resolver.resolve(jwtOf(with("acr" to null))).assurance).isEqualTo(Assurance.NONE)
         assertThat(denial(jwtOf(with("acr" to "urn:distracted:custom")))).isEqualTo(CallerDenial.UNKNOWN_ASSURANCE)
         assertThat(denial(jwtOf(with("acr" to "aal2")))).isEqualTo(CallerDenial.UNKNOWN_ASSURANCE)
+        assertThat(denial(jwtOf(with("acr" to "")))).isEqualTo(CallerDenial.MALFORMED_CLAIM)
     }
 
     @Test fun `authentication methods are validated rather than coerced`() {
@@ -183,6 +205,10 @@ class IamCallerResolverTest {
         assertThatThrownBy {
             CallerRegistration("dutch-development", "dutch-mobile", "https://api.dutch.invalid", emptySet(), true)
         }.isInstanceOf(IllegalArgumentException::class.java)
+    }
+
+        private companion object {
+        const val DPOP = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFG"
     }
 
     private class FixedClock(private val fixed: Instant) : Clock() {

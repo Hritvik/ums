@@ -1,6 +1,6 @@
 # Work Items — UMS remaining implementation (Slices D–G)
 
-> **Coordination status (2026-11-01).** Status lines below were added during central task reconciliation. Only W-1–W-3 have owner-recorded state; W-4–W-18 are marked Planned until the UMS owner records evidence. The central registry is authoritative for execution state and leases.
+> **Coordination status (2026-11-01).** Status lines below mirror the central registry; the registry remains authoritative for execution state and leases. W-1–W-4 and W-10 are integrated, W-5 is implemented and awaiting review, and the remaining items are planned.
 
 These work items continue the build sequence in the [implementation handoff](../ums-platform/issues/08-define-verification-and-implementation-handoff.md) after the already-verified Foundation and Slices A, B, and D1–D3. The scope boundary is recorded in [artifacts/scope-boundary.md](artifacts/scope-boundary.md). Work items are numbered `W-N` for cross-reference only. `Depends on` lines refer to other work items in this file.
 

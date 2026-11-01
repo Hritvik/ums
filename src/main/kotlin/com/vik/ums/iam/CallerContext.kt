@@ -47,6 +47,7 @@ data class CallerContext(
     val authenticationContext: String?,
     val authenticationMethods: List<String>,
     val scopes: Set<String>,
+    val tokenId: String,
 )
 
 /** Safe denial: a stable code only, never a claim value or token content. */

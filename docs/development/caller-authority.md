@@ -25,9 +25,9 @@ and the semantic rules come from its conformance requirements.
 | `scope` | space-separated; every scope must be in the registration's allowed set |
 | `token_profile`, `token_version`, `subject_kind` | must be `human_access`, `1`, `app_subject` |
 | `security_version` | positive; available for later stale-authority policy |
-| `acr` | mapped to assurance: `aal2`/`aal3` strong, `aal1` single, absent none, unknown denied |
-| `amr` | carried for audit, not authorization |
-| `cnf.jkt` | required; see the DPoP limit below |
+| `acr` | mapped to assurance: `aal2`/`aal3` strong, `aal1` single, absent none, blank or unknown denied |
+| `amr` | validated (1–8 unique bounded methods) and carried for audit, not authorization |
+| `cnf.jkt` | required, closed object; see the DPoP limit below |
 
 The tuple rules (issuer, app, client, audience, scope subset, confirmation key,
 and timestamp ordering) are the provider's MUST requirements. The published claim
@@ -54,13 +54,16 @@ An unknown app/client pair is denied without revealing which side is wrong.
 ## Verification
 
 At this commit, `./gradlew clean check bootJar --no-daemon --console=plain` passed
-with 160 JVM tests, zero failures/skips, 7 contract tests, 22 producer checks, and
-97.9% line / 80.4% branch coverage.
+with 161 JVM tests, zero failures/skips, 7 contract tests, 22 producer checks, and
+97.8% line / 80.3% branch coverage.
 
 `IamCallerResolverTest` loads the pinned provider fixtures from
 `contracts/dependencies/iam/iam-contracts-1.0.0.zip`: the accepted token and
-header, and four of the published rejected tokens (issuer, audience, app, client,
-scope, undeclared field). It also asserts the remaining denials — JOSE header,
+header, six of the published rejected tokens (issuer, audience, app, client,
+scope, undeclared field), and a decoder-shaped token where `aud` arrives as a
+one-element list and timestamps are normalized. The schema publishes a single
+audience string, but the decoder materialises a list, so both shapes are accepted
+and only exactly one value is allowed. It also asserts the remaining denials — JOSE header,
 expiry, future `auth_time`, profile, version, subject kind, malformed references
 and numbers, unregistered caller, scope escalation, confirmation key, malformed
 authentication methods, and unknown authentication context — and that assurance is

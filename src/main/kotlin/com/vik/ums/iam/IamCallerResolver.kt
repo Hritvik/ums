@@ -1,6 +1,7 @@
 package com.vik.ums.iam
 
 import org.springframework.security.oauth2.jwt.Jwt
+import java.math.BigDecimal
 import java.math.BigInteger
 import java.time.Clock
 import java.time.Instant
@@ -36,8 +37,9 @@ class IamCallerResolver(
         if (integer(jwt, "token_version") != 1L) deny(CallerDenial.VERSION_UNSUPPORTED)
         if (string(jwt, "subject_kind") != APP_SUBJECT) deny(CallerDenial.SUBJECT_KIND_MISMATCH)
         if (string(jwt, "jti")?.matches(JTI) != true) deny(CallerDenial.MALFORMED_CLAIM)
-        // The provider publishes a single audience string; a list is contract-invalid.
-        val audience = jwt.claims["aud"] as? String ?: deny(CallerDenial.AUDIENCE_MISMATCH)
+        // The provider schema publishes a single audience, but the decoder materialises `aud`
+        // as a one-element list. Accept exactly one value in either shape.
+        val audience = audience(jwt) ?: deny(CallerDenial.AUDIENCE_MISMATCH)
 
         val appId = string(jwt, "app_id")?.takeIf { it.matches(CallerRegistration.APP_ID) }
             ?: deny(CallerDenial.MALFORMED_CLAIM)
@@ -60,9 +62,11 @@ class IamCallerResolver(
             deny(if (registration.requiresDpop) CallerDenial.DPOP_REQUIRED else CallerDenial.MALFORMED_CLAIM)
         }
 
-        val acr = string(jwt, "acr")
+        val acr = if (jwt.claims.containsKey("acr")) {
+            string(jwt, "acr") ?: deny(CallerDenial.MALFORMED_CLAIM)
+        } else null
         return CallerContext(appId, subject, clientId, assurance(acr), securityVersion, acr,
-            authenticationMethods(jwt), scopes)
+            authenticationMethods(jwt), scopes, tokenId = string(jwt, "jti")!!)
     }
 
     private fun requireHeader(jwt: Jwt) {
@@ -98,8 +102,18 @@ class IamCallerResolver(
         return parts.toSet()
     }
 
-    private fun confirmationKey(jwt: Jwt): String? =
-        (jwt.claims["cnf"] as? Map<*, *>)?.get("jkt") as? String
+    private fun audience(jwt: Jwt): String? = when (val raw = jwt.claims["aud"]) {
+        is String -> raw
+        is Collection<*> -> raw.singleOrNull() as? String
+        else -> null
+    }
+
+    /** The confirmation object is closed: `jkt` is its only published member. */
+    private fun confirmationKey(jwt: Jwt): String? {
+        val cnf = jwt.claims["cnf"] as? Map<*, *> ?: return null
+        if (cnf.keys != setOf("jkt")) deny(CallerDenial.MALFORMED_CLAIM)
+        return cnf["jkt"] as? String
+    }
 
     private fun publishedInstant(jwt: Jwt, name: String): Instant? {
         if (!jwt.claims.containsKey(name)) return null
@@ -113,10 +127,10 @@ class IamCallerResolver(
     /** Integers only: the provider schema forbids fractions and out-of-range values. */
     private fun integer(jwt: Jwt, name: String): Long? = when (val raw = jwt.claims[name]) {
         is Byte, is Short, is Int, is Long -> (raw as Number).toLong()
-        is BigInteger -> raw.takeIf { it.bitLength() < 63 }?.toLong()
-        is Double -> raw.takeIf {
-            it.isFinite() && it % 1.0 == 0.0 && it >= Long.MIN_VALUE.toDouble() && it <= Long.MAX_VALUE.toDouble()
-        }?.toLong()
+        is BigInteger -> raw.takeIf { it >= BigInteger.valueOf(Long.MIN_VALUE) && it <= BigInteger.valueOf(Long.MAX_VALUE) }
+            ?.toLong()
+        // Exact conversion: fractions and out-of-range doubles are rejected, never saturated.
+        is Double -> runCatching { BigDecimal.valueOf(raw).longValueExact() }.getOrNull()
         else -> null
     }
 
