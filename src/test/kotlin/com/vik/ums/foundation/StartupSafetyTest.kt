@@ -12,6 +12,11 @@ class StartupSafetyTest {
         "ums.security.jwk-set-uri" to "https://iam.example.test/.well-known/jwks.json",
         "ums.security.audience" to "https://ums.example.test",
         "ums.environment" to "test",
+        "ums.profile.locale-version" to "l1",
+        "ums.profile.timezone-version" to "t1",
+        "ums.profile.locales" to "en",
+        "ums.profile.timezones" to "UTC",
+        "ums.profile.receipt-key" to "YWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWE=",
         "ums.iam.issuer-environment-ref" to "6f1d4a2c-3b5e-4c7d-8a9b-0c1d2e3f4a5b",
         "ums.security.registrations" to
             """[{"appId":"dutch-development","clientId":"dutch-mobile","audience":"https://ums.example.test","allowedScopes":["profile:read"],"requiresDpop":true}]""",

@@ -17,6 +17,24 @@ class ProfileServiceConfiguration {
         TransactionTemplate(DataSourceTransactionManager(dataSource))
 
     @Bean
+    fun profileEditingService(jdbc: JdbcTemplate, transactions: TransactionTemplate,
+                              mapper: ObjectMapper, environment: Environment): ProfileEditingService =
+        ProfileEditingService(
+            jdbc, transactions, mapper, environment.getRequiredProperty("ums.environment"),
+            ProfileCatalogs(
+                environment.getRequiredProperty("ums.profile.locale-version"),
+                split(environment.getRequiredProperty("ums.profile.locales")),
+                environment.getRequiredProperty("ums.profile.timezone-version"),
+                split(environment.getRequiredProperty("ums.profile.timezones")),
+            ),
+            HmacPatchFingerprint(java.util.Base64.getDecoder()
+                .decode(environment.getRequiredProperty("ums.profile.receipt-key"))),
+        )
+
+    private fun split(value: String): Set<String> =
+        value.split(',').map { it.trim() }.filter { it.isNotEmpty() }.toSet()
+
+    @Bean
     fun profileProvisioningService(jdbc: JdbcTemplate, transactions: TransactionTemplate,
                                    mapper: ObjectMapper, environment: Environment): ProfileProvisioningService =
         ProfileProvisioningService(jdbc, transactions, mapper,

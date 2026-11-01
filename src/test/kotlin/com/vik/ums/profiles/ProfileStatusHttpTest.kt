@@ -69,8 +69,13 @@ class ProfileStatusHttpTest {
 
         val registrations = CallerRegistrations.parse(registrationJson)
         val resolver = IamCallerResolver("https://iam.example.test", registrations)
-        val controller = ProfileStatusController(provisioning, ProfileScopeResolver(jdbc, issuerEnvironmentRef), mapper)
-        mockMvc = MockMvcBuilders.standaloneSetup(controller)
+        val editing = ProfileEditingService(jdbc, tx, mapper, "test",
+            ProfileCatalogs("l1", setOf("en"), "t1", setOf("UTC")), HmacPatchFingerprint(ByteArray(32) { 7 }))
+        val scopeResolver = ProfileScopeResolver(jdbc, issuerEnvironmentRef)
+        mockMvc = MockMvcBuilders.standaloneSetup(
+            ProfileStatusController(provisioning, scopeResolver, mapper),
+            ProfileController(editing, scopeResolver, mapper),
+        )
             .addInterceptors(CallerAuthorityInterceptor(resolver, mapper))
             .build()
     }
@@ -111,6 +116,26 @@ class ProfileStatusHttpTest {
             .andExpect(status().isNotFound)
             .andExpect(jsonPath("$.error.code").value("unavailable"))
             .andExpect(jsonPath("$.correlationId").exists())
+    }
+
+    @Test fun `the mapped caller reads only its own display envelope`() {
+        authenticate()
+
+        mockMvc.perform(get("/api/v1/profile"))
+            .andExpect(status().isOk)
+            .andExpect(header().string("Cache-Control", "no-store"))
+            .andExpect(jsonPath("$.data.profileRevision").value("1"))
+            .andExpect(jsonPath("$.data.displayNameSource").value("GENERATED_FALLBACK"))
+            .andExpect(jsonPath("$.data.fields").isMap)
+    }
+
+    @Test fun `an unmapped caller cannot read a display`() {
+        authenticate()
+        jdbc.update("delete from ums_iam_app_mappings")
+
+        mockMvc.perform(get("/api/v1/profile"))
+            .andExpect(status().isNotFound)
+            .andExpect(jsonPath("$.error.code").value("unavailable"))
     }
 
     @Test fun `an unauthenticated request is refused before the handler`() {

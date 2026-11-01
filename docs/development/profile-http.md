@@ -1,11 +1,14 @@
-# Slice C3: first profile HTTP vertical
+# Slice C3: first profile HTTP verticals
 
-The status read is the first shipped business route. It proves the authority path end to
-end: bearer token, caller resolution, scope mapping, and a non-enumerating answer.
+Two business reads are shipped: profile status and own display. They prove the authority
+path end to end: bearer token, caller resolution, scope mapping, display authorization,
+and a non-enumerating answer.
 
-## Route
+## Routes
 
-`GET /api/v1/profile/status` returns the caller's own profile status. Authentication is
+`GET /api/v1/profile/status` returns the caller's own profile status.
+`GET /api/v1/profile` returns the caller's own display envelope (`{data: …}`) and refuses
+an unavailable or restricted profile with the same `404` as a hidden target. Authentication is
 the resource server's job; the caller-authority interceptor then resolves the pinned IAM
 human token into one app-scoped caller and stores it for the handler. A caller with no
 mapped application or subject receives the same `404 unavailable` as a hidden target, and
@@ -19,10 +22,14 @@ mapping is never repaired here.
 
 ## Deliberate limits
 
-- **One of eight operations.** Profile read/update, deletion request/cancellation, display
+- **Two of eight operations.** Profile update, deletion request/cancellation, display
   batches, and policy reconciliation are still unimplemented; every other route stays
   denied.
 - **No registration administration.** Registrations are configuration files, not an API.
+- **Display read only.** Mutations need the caller actor reference and idempotency header;
+  the update route is not shipped.
+- **Actor reference is local.** A name-based reference for audit and idempotency is derived
+  from the registered app and client. It is not an IAM identity and must not be exported.
 - **No DPoP proof verification.** The token's confirmation key is validated for shape only;
   proof-of-possession belongs with the ingress transport.
 - **No rate limits or request-size enforcement** at the HTTP layer yet; the service-level
@@ -34,7 +41,8 @@ mapping is never repaired here.
 PostgreSQL: a mapped caller gets its own status, an unmapped caller gets the same
 `unavailable` answer, and an unauthenticated request is refused before the handler.
 `CallerRegistrationsTest` proves missing, malformed, duplicate, and open-ended
-configuration fails closed. The application context test proves the shipped route is the
+configuration fails closed. The HTTP test also covers the display envelope and the
+non-enumerating refusal for an unmapped caller. The application context test proves the shipped route is the
 only permitted business route.
 
 RED evidence: the first wiring attempt registered the authority filter twice and returned

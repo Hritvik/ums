@@ -24,6 +24,14 @@ class StartupSafetyConfiguration(environment: Environment) {
         require(required(environment, "ums.environment").matches(Regex("[a-z0-9-]{1,32}"))) {
             "ums.environment must be a lowercase environment name"
         }
+        required(environment, "ums.profile.locale-version")
+        required(environment, "ums.profile.timezone-version")
+        require(split(environment, "ums.profile.locales").isNotEmpty()) { "ums.profile.locales must not be empty" }
+        require(split(environment, "ums.profile.timezones").isNotEmpty()) { "ums.profile.timezones must not be empty" }
+        require(runCatching { java.util.Base64.getDecoder()
+            .decode(required(environment, "ums.profile.receipt-key")) }.getOrNull()?.size?.let { it >= 32 } == true) {
+            "ums.profile.receipt-key must be a base64 key of at least 32 bytes"
+        }
         // No default caller registrations and no guessed app binding.
         CallerRegistrations.parse(required(environment, "ums.security.registrations"))
         runCatching { UUID.fromString(required(environment, "ums.iam.issuer-environment-ref")) }
@@ -35,6 +43,9 @@ class StartupSafetyConfiguration(environment: Environment) {
         require(!value.isNullOrBlank()) { "$property must be explicitly configured" }
         return value
     }
+
+    private fun split(environment: Environment, property: String): Set<String> =
+        required(environment, property).split(',').map { it.trim() }.filter { it.isNotEmpty() }.toSet()
 
     private fun requireHttps(environment: Environment, property: String) {
         val uri = runCatching { URI(required(environment, property)) }.getOrNull()

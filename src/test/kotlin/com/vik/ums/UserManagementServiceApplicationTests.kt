@@ -53,6 +53,11 @@ class UserManagementServiceApplicationTests {
             registry.add("ums.security.jwk-set-uri") { "https://iam.example.test/keys" }
             registry.add("ums.security.audience") { "https://ums.example.test" }
             registry.add("ums.environment") { "test" }
+            registry.add("ums.profile.locale-version") { "l1" }
+            registry.add("ums.profile.timezone-version") { "t1" }
+            registry.add("ums.profile.locales") { "en" }
+            registry.add("ums.profile.timezones") { "UTC" }
+            registry.add("ums.profile.receipt-key") { "YWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWE=" }
             registry.add("ums.iam.issuer-environment-ref") { "6f1d4a2c-3b5e-4c7d-8a9b-0c1d2e3f4a5b" }
             registry.add("ums.security.registrations") {
                 """[{"appId":"dutch-development","clientId":"dutch-mobile",
