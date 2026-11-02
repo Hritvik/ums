@@ -25,7 +25,8 @@ A migration that fails is not recorded as applied. On PostgreSQL the statement t
 back, so the schema stays at the last successful version, `flyway_schema_history` has no success
 row for the failed version, and the service refuses to start until the upgrade is complete.
 
-- Detect: startup fails with a Flyway error, and `flyway.info().pending()` lists the version.
+- Detect: startup fails with a Flyway error (Flyway validates and applies at startup, so the web
+  server never opens), and `flyway.info().pending()` lists the version.
 - Resume: fix the cause (disk, lock, permissions) and start again; Flyway applies the pending
   version. If the database was manually altered, `flyway repair` realigns the history before
   retrying.
@@ -50,6 +51,6 @@ keeps erased profiles erased.
 
 ## Rehearsal record
 
-The restore drill runs the upgrade against the restored copy before reconciliation and records the
-migration result; see `docs/development/restore-drill.md`. Both are required before a deployment is
-called ready.
+The restore drill takes its backup at schema 22, restores it, and runs the forward migration to the
+current schema against the restored copy before reconciliation, then records the migration result;
+see `docs/development/restore-drill.md`. Both are required before a deployment is called ready.

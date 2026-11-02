@@ -51,7 +51,9 @@ class RestoreDrillTest {
 
     @Test fun `a backup taken before an erasure restores into an erased profile`() {
         val source = DriverManagerDataSource(postgres.jdbcUrl, postgres.username, postgres.password)
-        Flyway.configure().dataSource(source).load().migrate()
+        // The drill takes its backup before the latest migration, so the restore also rehearses
+        // a forward upgrade from the previous shipped schema.
+        Flyway.configure().dataSource(source).target("22").load().migrate()
         val jdbc = JdbcTemplate(source)
         val transactions = TransactionTemplate(DataSourceTransactionManager(source))
         ProfilePolicyRegistry(jdbc, transactions, mapper).register(
