@@ -6,7 +6,7 @@ set -eu
 fail=0
 
 if command -v gitleaks >/dev/null 2>&1; then
-    gitleaks detect --no-git --redact || fail=1
+    gitleaks detect --no-git --redact --config .gitleaks.toml || fail=1
 else
     echo "security-audit: gitleaks not installed" >&2
     [ "${CI:-}" = "true" ] && fail=1

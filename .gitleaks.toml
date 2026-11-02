@@ -1,0 +1,3 @@
+# Contract fixtures contain obviously fake tokens on purpose; everything else is scanned.
+[allowlist]
+paths = ['''contracts/v1/fixtures/''']

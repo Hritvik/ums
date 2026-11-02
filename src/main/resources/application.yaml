@@ -33,6 +33,7 @@ ums:
     reads-per-minute: ${UMS_RATE_LIMIT_READS_PER_MINUTE:60}
     writes-per-minute: ${UMS_RATE_LIMIT_WRITES_PER_MINUTE:20}
     privacy-per-minute: ${UMS_RATE_LIMIT_PRIVACY_PER_MINUTE:10}
+    unauthenticated-per-minute: ${UMS_RATE_LIMIT_UNAUTHENTICATED_PER_MINUTE:120}
     # With shared limit infrastructure degraded, the local window tightens to a fifth.
     degraded: ${UMS_RATE_LIMIT_DEGRADED:false}
   maintenance:

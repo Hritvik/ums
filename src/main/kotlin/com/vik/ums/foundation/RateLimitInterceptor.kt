@@ -71,7 +71,10 @@ class FixedWindowRateLimiter(private val clock: Clock, private val window: Durat
             else existing.copy(count = existing.count + 1)
         }!!
         if (windows.size > MAX_KEYS) {
-            windows.entries.removeIf { !now.isBefore(it.value.start.plus(window.multipliedBy(2))) }
+            // Bound memory under a key flood: drop the oldest windows, expired or not.
+            windows.entries.sortedBy { it.value.start }
+                .take(windows.size - MAX_KEYS)
+                .forEach { windows.remove(it.key, it.value) }
         }
         return current.count <= limit
     }

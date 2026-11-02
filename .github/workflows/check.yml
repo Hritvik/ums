@@ -21,5 +21,13 @@ jobs:
         run: |
           python -m venv .venv
           .venv/bin/python -m pip install -r contracts/requirements-test.txt
-      - name: Verify contracts, PostgreSQL integration, and coverage
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.23'
+      - name: Install security scanners
+        run: |
+          go install github.com/gitleaks/gitleaks/v8@latest
+          go install github.com/google/osv-scanner/cmd/osv-scanner@v1.9.2
+          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+      - name: Verify contracts, PostgreSQL integration, coverage, and security
         run: ./gradlew check bootJar --no-daemon --console=plain

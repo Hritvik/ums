@@ -54,6 +54,13 @@ class SecurityConfiguration {
         CallerAuthorityInterceptor(resolver, mapper, failures)
 
     @Bean
+    fun preAuthRateLimitFilter(mapper: ObjectMapper, clock: java.time.Clock,
+                               environment: Environment): PreAuthRateLimitFilter =
+        PreAuthRateLimitFilter(mapper, clock,
+            perMinute = environment.getProperty("ums.rate-limit.unauthenticated-per-minute", "120").toInt(),
+            degraded = environment.getProperty("ums.rate-limit.degraded", "false").toBoolean())
+
+    @Bean
     fun rateLimitInterceptor(mapper: ObjectMapper, clock: java.time.Clock, environment: Environment): RateLimitInterceptor =
         RateLimitInterceptor(mapper, clock,
             readsPerMinute = environment.getProperty("ums.rate-limit.reads-per-minute", "60").toInt(),
