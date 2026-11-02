@@ -82,7 +82,8 @@ shared store, which this best-effort tier does not claim.
 - Build-tool-only BouncyCastle and OpenTelemetry advisories are documented and ignored; they are
   reachable only from the Kotlin compiler's own classpaths.
 - R-1: `spring-webmvc` 6.2.x has two accepted 9.8 advisories whose fix is Spring Framework 7.0.9,
-  available only with a Spring Boot 4 major upgrade. That upgrade is a tracked follow-up in this
-  document, not part of W-16.
+  available only with a Spring Boot 4 major upgrade. The migration plan is
+  [spring-7-upgrade.md](../operations/spring-7-upgrade.md); it is not a drop-in (Jackson 3, Spring
+  Security 7, Gradle 8.14).
 - The avatar cross-scope attack is deferred behind W-11.
 - External scanner databases are fetched at CI time; offline builds skip them by design.
