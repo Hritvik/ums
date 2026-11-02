@@ -63,7 +63,10 @@ shared store, which this best-effort tier does not claim.
   whose fix exists only in Spring Framework 7 / Boot 4 (a major upgrade tracked separately), and
   BouncyCastle/OpenTelemetry advisories that only affect Kotlin build-tool configurations and are
   never packaged in the runtime artifact.
-- A finding is recorded with its severity; unresolved critical or high findings block the release.
+- A finding in the shipped runtime is recorded with its severity; unresolved critical or high
+  runtime findings block the release. Build-tool-only findings are listed as accepted risks with
+  the reason that they are never packaged, and they do not silently disappear: the ignore file is
+  the record.
 
 ## Residual findings and gates
 
@@ -76,6 +79,10 @@ shared store, which this best-effort tier does not claim.
   configured, and enabling it naively would let a client rotate `X-Forwarded-For`.
 - `spring-webmvc` carries two accepted advisories with no 6.2.x fix; the remediation is the
   Spring Framework 7 / Boot 4 upgrade.
-- Build-tool-only BouncyCastle and OpenTelemetry advisories are documented and ignored.
+- Build-tool-only BouncyCastle and OpenTelemetry advisories are documented and ignored; they are
+  reachable only from the Kotlin compiler's own classpaths.
+- R-1: `spring-webmvc` 6.2.x has two accepted 9.8 advisories whose fix is Spring Framework 7.0.9,
+  available only with a Spring Boot 4 major upgrade. That upgrade is a tracked follow-up in this
+  document, not part of W-16.
 - The avatar cross-scope attack is deferred behind W-11.
 - External scanner databases are fetched at CI time; offline builds skip them by design.

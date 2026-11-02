@@ -23,7 +23,7 @@ jobs:
           .venv/bin/python -m pip install -r contracts/requirements-test.txt
       - uses: actions/setup-go@v5
         with:
-          go-version: '1.23'
+          go-version: '1.24'
       - name: Install security scanners
         run: |
           go install github.com/zricethezav/gitleaks/v8@v8.30.1

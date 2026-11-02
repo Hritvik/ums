@@ -20,7 +20,6 @@ extra["commons-compress.version"] = "1.28.0"
 extra["log4j2.version"] = "2.26.1"
 extra["postgresql.version"] = "42.7.12"
 extra["commons-lang3.version"] = "3.18.0"
-extra["bouncycastle.version"] = "1.85"
 
 repositories { mavenCentral() }
 
@@ -51,9 +50,6 @@ dependencies {
     testImplementation("org.springframework.boot:spring-boot-starter-test")
     testImplementation("org.springframework.security:spring-security-test")
     testImplementation("org.apache.commons:commons-compress:1.28.0")
-    constraints {
-        implementation("io.opentelemetry:opentelemetry-api:1.67.0")
-    }
     testImplementation("org.testcontainers:junit-jupiter")
     testImplementation("org.testcontainers:postgresql")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
