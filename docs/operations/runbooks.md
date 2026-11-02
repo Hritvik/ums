@@ -13,27 +13,31 @@ gauge, or page.
 | `ums.alert.poisoned.outbox` | quarantined outbox facts | any |
 | `ums.alert.ingestion.quarantine.open` | open ingestion quarantine | any |
 | `ums.alert.failed.retention` | failed deletes in the last sweep | any |
-| `ums.alert.backup.failed` | failed backup or last success older than 26 h | any |
-| `ums.alert.authorization.failures` | caller denials | 5 since the previous check |
+| `ums.alert.backup.failed` | failed, stale, or unconfigured backup | any |
+| `ums.alert.export.cleanup.failed` | the last export cleanup pass failed | any |
+| `ums.alert.authorization.new` | caller denials | 5 since the previous check |
+| `ums.alert.authorization.failures` | cumulative caller denials | trend only |
 | `ums.outbox.*`, `ums.retention.*`, `ums.backup.*` | delivery, sweep, backup state | see each doc |
 
 ## Overdue erasure
 
 1. Read `ums.alert.overdue.erasures` and the maintenance-worker log; both carry counts only.
-2. Check the maintenance worker is enabled (`ums.maintenance.enabled`) and not blocked by its
-   lease (`ums_worker_lease` row older than 10 minutes clears itself).
-3. If the worker runs, inspect `ums_profile_deletion_requests` for `PENDING` rows with an old
-   deadline and their `failure_class` evidence; a content-authority block is expected until the
-   content owner confirms cleanup.
-4. If nothing moves, run the batch once with a small limit and read the outcomes
-   (`LOCAL_COMPLETED`, `BLOCKED`, `RETRYABLE`). Do not hand-edit lifecycle rows.
+2. Check the maintenance worker is enabled (`ums.maintenance.enabled`) and that its lease is not
+   stuck: `ums_worker_lease.leased_until` is when the current holder may be replaced (up to ten
+   minutes after it acquired the pass).
+3. Read the maintenance-worker log: it prints finalized, blocked, and retryable counts. A
+   `BLOCKED` outcome is usually a content-authority obligation waiting for the content owner.
+4. There is no manual batch endpoint; the worker is the only entry point. If it is running and
+   the count does not fall, capture the counts and escalate as a stuck finalization rather than
+   editing lifecycle rows by hand.
 
 ## Poison event
 
 1. The outbox row is quarantined as `TRANSPORT_REJECTED` or `RELAY_INTERRUPTED`; the stream is
    held so later revisions do not overtake it.
-2. Confirm the consumer endpoint and payload schema, fix the cause, then re-drive exactly one
-   fact with `UMS_OUTBOX_REPAIR_EVENT_ID=<event id>`.
+2. Confirm the consumer endpoint and payload schema, fix the cause, then restart once with
+   `ums.outbox.repair.event-id=<event id>` (environment: `UMS_OUTBOX_REPAIR_EVENT_ID`), which
+   re-drives exactly that fact without changing its identity.
 3. Never edit or delete a quarantined row to "unblock" the stream.
 
 ## Stuck provisioning

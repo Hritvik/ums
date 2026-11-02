@@ -11,16 +11,27 @@ import org.springframework.stereotype.Component
  */
 @Component
 @ConditionalOnProperty(name = ["ums.privacy.export-sweep.enabled"], havingValue = "true", matchIfMissing = true)
-class ProfileExportSweepScheduler(private val exports: ProfileExportService) {
+class ProfileExportSweepScheduler(
+    private val exports: ProfileExportService,
+    private val signals: ExportSweepSignals = ExportSweepSignals(),
+    private val clock: java.time.Clock = java.time.Clock.systemUTC(),
+) {
     @Scheduled(
         fixedDelayString = "\${ums.privacy.export-sweep.interval:PT15M}",
         initialDelayString = "\${ums.privacy.export-sweep.initial-delay:PT1M}",
     )
     fun sweep() {
-        val result = exports.sweep()
-        if (result.expiredExports > 0 || result.purgedCapabilities > 0) {
-            log.info("Export sweep expired {} artifacts and purged {} capabilities",
-                result.expiredExports, result.purgedCapabilities)
+        try {
+            val result = exports.sweep()
+            signals.failed = false
+            signals.lastCompletedAt = clock.instant()
+            if (result.expiredExports > 0 || result.purgedCapabilities > 0) {
+                log.info("Export sweep expired {} artifacts and purged {} capabilities",
+                    result.expiredExports, result.purgedCapabilities)
+            }
+        } catch (unavailable: Exception) {
+            signals.failed = true
+            log.error("Export cleanup failed ({})", unavailable.javaClass.simpleName)
         }
     }
 

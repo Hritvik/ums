@@ -14,6 +14,9 @@ class BackupSignals {
     @Volatile var lastSuccessAt: Instant? = null
     @Volatile var failed: Boolean = false
     @Volatile var age: Duration? = null
+
+    /** False until a status file is configured; an unconfigured backup is not a healthy one. */
+    @Volatile var configured: Boolean = false
 }
 
 /**

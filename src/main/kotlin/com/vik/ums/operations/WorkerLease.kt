@@ -24,6 +24,11 @@ class WorkerLease(private val jdbc: JdbcTemplate, private val clock: Clock) {
         return if (acquired == 1) holder else null
     }
 
+    fun renew(worker: String, holder: UUID, ttl: Duration): Boolean =
+        jdbc.update("""update ums_worker_lease set leased_until = ?
+            where worker = ? and holder = ?""",
+            Timestamp.from(clock.instant().plus(ttl)), worker, holder) == 1
+
     fun release(worker: String, holder: UUID) {
         jdbc.update("""update ums_worker_lease set leased_until = ?
             where worker = ? and holder = ?""", Timestamp.from(clock.instant()), worker, holder)

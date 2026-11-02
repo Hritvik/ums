@@ -36,28 +36,30 @@ class MaintenanceWorker(
     private val batchLimit: Int = 50,
     private val maxPages: Int = 20,
     private val noticeLimit: Int = 100,
+    private val maxFinalizations: Int = 200,
 ) {
     init {
         require(batchLimit in 1..100) { "Batch limit must be between 1 and 100" }
-        require(maxPages > 0 && noticeLimit > 0)
+        require(maxPages > 0 && noticeLimit > 0 && maxFinalizations > 0)
     }
 
     fun run(): MaintenanceResult {
         val holder = lease.tryAcquire(WORKER, Duration.ofMinutes(10)) ?: return MaintenanceResult(skipped = true)
         return try {
-            val finalized = finalizeDue()
+            val finalized = finalizeDue(holder)
             val scheduled = scheduleNotices()
             MaintenanceResult(false, finalized.first, finalized.second, finalized.third, scheduled)
         } finally {
-            lease.release(WORKER, holder)
+            runCatching { lease.release(WORKER, holder) }
         }
     }
 
-    private fun finalizeDue(): Triple<Int, Int, Int> {
+    private fun finalizeDue(holder: UUID): Triple<Int, Int, Int> {
         var finalized = 0
         var blocked = 0
         var retryable = 0
         for (app in applications()) {
+            if (finalized + blocked + retryable >= maxFinalizations) break
             var cursor: DeletionBatchCursor? = null
             var page = 0
             while (page < maxPages) {
@@ -73,6 +75,7 @@ class MaintenanceWorker(
                 }
                 cursor = result.nextCursor ?: break
                 page++
+                lease.renew(WORKER, holder, Duration.ofMinutes(10))
             }
         }
         if (finalized + blocked + retryable > 0) {
@@ -81,9 +84,20 @@ class MaintenanceWorker(
         return Triple(finalized, blocked, retryable)
     }
 
+    /** Most overdue application first, so one busy app cannot starve the others across passes. */
     private fun applications(): List<AppScope> =
-        jdbc.query("select issuer_environment_ref, app_reference from ums_profile_policies",
-            { rs, _ -> AppScope(rs.getObject(1, UUID::class.java), rs.getObject(2, UUID::class.java)) })
+        jdbc.query("""select p.issuer_environment_ref, p.app_reference
+            from ums_profile_policies p
+            left join lateral (
+                select min(r.deadline) as oldest
+                from ums_profile_deletion_requests r
+                where r.issuer_environment_ref = p.issuer_environment_ref
+                  and r.app_reference = p.app_reference
+                  and r.status = 'PENDING' and r.deadline <= ?
+            ) due on true
+            order by due.oldest nulls last, p.app_reference""",
+            { rs, _ -> AppScope(rs.getObject(1, UUID::class.java), rs.getObject(2, UUID::class.java)) },
+            java.sql.Timestamp.from(clock.instant()))
 
     /** A closed profile without an intent for its current closure instance gets one. */
     private fun scheduleNotices(): Int {
@@ -100,8 +114,14 @@ class MaintenanceWorker(
                 rs.getObject(3, UUID::class.java)) }, noticeLimit)
         var scheduled = 0
         for (scope in due) {
-            val results = notices.schedule(
-                TrustedNoticeAuthority(scope.application(), UUID.randomUUID()), scope, "maintenance-worker")
+            val results = try {
+                notices.schedule(
+                    TrustedNoticeAuthority(scope.application(), UUID.randomUUID()), scope, "maintenance-worker")
+            } catch (unavailable: Exception) {
+                // One failing scope must not stop the others; the next pass retries it.
+                log.warn("Notice scheduling failed ({})", unavailable.javaClass.simpleName)
+                continue
+            }
             scheduled += results.count { it.outcome == com.vik.ums.notices.NoticeOutcome.QUEUED }
         }
         if (scheduled > 0) log.info("Maintenance pass queued {} retention notices", scheduled)

@@ -50,7 +50,10 @@ class OperationsConfigurationTest {
         val registry = SimpleMeterRegistry()
         context.getBean(io.micrometer.core.instrument.binder.MeterBinder::class.java).bindTo(registry)
         assertThat(registry.meters.map { it.id.name })
-            .contains("ums.alert.overdue.erasures", "ums.alert.poisoned.outbox", "ums.alert.backup.failed")
+            .contains("ums.alert.overdue.erasures", "ums.alert.poisoned.outbox", "ums.alert.backup.failed",
+                "ums.alert.authorization.new", "ums.alert.export.cleanup.failed")
+        assertThat(registry.get("ums.alert.overdue.erasures").gauge().value()).isNaN()
+        assertThat(registry.get("ums.alert.backup.failed").gauge().value()).isNaN()
         context.close()
     }
 

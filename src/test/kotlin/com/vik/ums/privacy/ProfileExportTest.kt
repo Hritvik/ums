@@ -352,6 +352,30 @@ class ProfileExportTest {
             .isInstanceOf(IllegalStateException::class.java)
     }
 
+    @Test fun `a successful export cleanup clears the failure signal`() {
+        val signals = ExportSweepSignals()
+        signals.failed = true
+
+        ProfileExportSweepScheduler(exports, signals, clock).sweep()
+
+        assertThat(signals.failed).isFalse()
+        assertThat(signals.lastCompletedAt).isEqualTo(clock.instant())
+    }
+
+    @Test fun `a failing export cleanup is signalled instead of silent`() {
+        val unreachable = org.springframework.jdbc.datasource.DriverManagerDataSource(
+            "jdbc:postgresql://127.0.0.1:1/ums", "ums", "ums")
+        val broken = ProfileExportService(JdbcTemplate(unreachable),
+            TransactionTemplate(org.springframework.jdbc.datasource.DataSourceTransactionManager(unreachable)),
+            mapper, clock)
+        val signals = ExportSweepSignals()
+
+        ProfileExportSweepScheduler(broken, signals, clock).sweep()
+
+        assertThat(signals.failed).isTrue()
+        assertThat(signals.lastCompletedAt).isNull()
+    }
+
     private class AdjustableClock(@Volatile private var now: Instant) : Clock() {
         fun advance(duration: Duration) { now = now.plus(duration) }
         override fun getZone(): ZoneId = ZoneOffset.UTC

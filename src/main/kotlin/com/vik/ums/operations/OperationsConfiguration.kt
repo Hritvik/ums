@@ -53,9 +53,19 @@ class OperationsConfiguration {
             noticeLimit = environment.getProperty("ums.maintenance.notice-limit", "100").toInt())
 
     @Bean
+    fun alertSignals(): AlertSignals = AlertSignals()
+
+    @Bean
+    fun exportSweepSignals(): com.vik.ums.privacy.ExportSweepSignals =
+        com.vik.ums.privacy.ExportSweepSignals()
+
+    @Bean
     fun operationalAlerts(jdbc: JdbcTemplate, clock: Clock, failures: AuthorizationFailures,
-                          retention: RetentionSignals, backup: BackupSignals): OperationalAlerts =
-        OperationalAlerts(jdbc, clock, failures, retention, backup)
+                          retention: RetentionSignals, backup: BackupSignals,
+                          exports: com.vik.ums.privacy.ExportSweepSignals, signals: AlertSignals,
+                          environment: Environment): OperationalAlerts =
+        OperationalAlerts(jdbc, clock, failures, retention, backup, exports, signals,
+            retentionEnabled = environment.getProperty("ums.retention.sweep.enabled", "true").toBoolean())
 
     @Bean
     @ConditionalOnProperty(name = ["ums.maintenance.enabled"], havingValue = "true", matchIfMissing = true)
@@ -65,19 +75,22 @@ class OperationsConfiguration {
     fun alertScheduler(alerts: OperationalAlerts): AlertScheduler = AlertScheduler(alerts)
 
     @Bean
-    fun operationsMetrics(alerts: OperationalAlerts): MeterBinder = MeterBinder { registry ->
+    fun operationsMetrics(signals: AlertSignals): MeterBinder = MeterBinder { registry ->
         listOf(
             "overdue.erasures" to { s: AlertSnapshot -> s.overdueErasures.toDouble() },
             "overdue.beyond.objective" to { s: AlertSnapshot -> s.overdueBeyondObjective.toDouble() },
             "poisoned.outbox" to { s: AlertSnapshot -> s.poisonedOutbox.toDouble() },
             "ingestion.quarantine.open" to { s: AlertSnapshot -> s.openIngestionQuarantine.toDouble() },
             "failed.retention" to { s: AlertSnapshot -> s.failedRetentionSweeps.toDouble() },
+            "export.cleanup.failed" to { s: AlertSnapshot -> s.failedExportCleanup.toDouble() },
             "authorization.failures" to { s: AlertSnapshot -> s.authorizationFailures.toDouble() },
+            "authorization.new" to { s: AlertSnapshot -> s.newAuthorizationFailures.toDouble() },
         ).forEach { (name, value) ->
-            Gauge.builder("ums.alert.$name", alerts) { value(it.snapshot()) }.register(registry)
+            Gauge.builder("ums.alert.$name", signals) { it.snapshot?.let(value) ?: Double.NaN }
+                .register(registry)
         }
-        Gauge.builder("ums.alert.backup.failed", alerts) {
-            if (it.snapshot().backupFailed) 1.0 else 0.0
+        Gauge.builder("ums.alert.backup.failed", signals) {
+            it.snapshot?.let { alert -> if (alert.backupFailed) 1.0 else 0.0 } ?: Double.NaN
         }.register(registry)
     }
 }

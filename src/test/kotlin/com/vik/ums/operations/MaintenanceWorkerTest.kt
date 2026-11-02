@@ -20,6 +20,7 @@ import com.vik.ums.profiles.TrustedOnboardingFact
 import com.vik.ums.recovery.BackupSignals
 import com.vik.ums.retention.RetentionSignals
 import org.assertj.core.api.Assertions.assertThat
+import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.flywaydb.core.Flyway
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
@@ -53,6 +54,8 @@ class MaintenanceWorkerTest {
     private val failures = AuthorizationFailures()
     private val retention = RetentionSignals()
     private val backup = BackupSignals()
+    private val exports = com.vik.ums.privacy.ExportSweepSignals()
+    private val alertSignals = AlertSignals()
 
     @BeforeEach fun setup() {
         val ds = DriverManagerDataSource(postgres.jdbcUrl, postgres.username, postgres.password)
@@ -77,7 +80,8 @@ class MaintenanceWorkerTest {
         val notices = ProfileNoticeService(jdbc, transactions, mapper, "test", clock)
         lease = WorkerLease(jdbc, clock)
         worker = MaintenanceWorker(jdbc, lease, batches, notices, clock)
-        alerts = OperationalAlerts(jdbc, clock, failures, retention, backup)
+        alerts = OperationalAlerts(jdbc, clock, failures, retention, backup, exports, alertSignals,
+            retentionEnabled = true)
     }
 
     private fun requestDeletion() {
@@ -126,6 +130,15 @@ class MaintenanceWorkerTest {
         assertThat(worker.run().noticesScheduled).isZero()
     }
 
+    @Test fun `a disabled retention sweep is not reported as a failure`() {
+        val disabled = OperationalAlerts(jdbc, clock, failures, RetentionSignals(), backup, exports, alertSignals,
+            retentionEnabled = false)
+
+        disabled.check()
+
+        assertThat(alertSignals.snapshot?.failedRetentionSweeps).isZero()
+    }
+
     @Test fun `the schedulers run the worker and the alerts`() {
         requestDeletion()
         clock.advance(Duration.ofDays(31))
@@ -152,12 +165,14 @@ class MaintenanceWorkerTest {
         retention.record(com.vik.ums.retention.RetentionReport(listOf(
             com.vik.ums.retention.SweepClassResult("patch_receipts", 1, 0, 1))))
         backup.failed = true
+        exports.failed = true
         repeat(5) { failures.record() }
 
-        val snapshot = AlertScheduler(alerts).let { scheduler ->
-            scheduler.check()
-            alerts.snapshot()
-        }
+        val scheduler = AlertScheduler(alerts)
+        scheduler.check()
+        val snapshot = alertSignals.snapshot!!
+        scheduler.check()
+        val settled = alertSignals.snapshot!!
 
         assertThat(snapshot.overdueErasures).isEqualTo(1)
         assertThat(snapshot.overdueBeyondObjective).isEqualTo(1)
@@ -166,6 +181,47 @@ class MaintenanceWorkerTest {
         assertThat(snapshot.failedRetentionSweeps).isEqualTo(1)
         assertThat(snapshot.backupFailed).isTrue()
         assertThat(snapshot.authorizationFailures).isEqualTo(5)
+        assertThat(snapshot.newAuthorizationFailures).isEqualTo(5)
+        assertThat(snapshot.failedExportCleanup).isEqualTo(1)
+        assertThat(settled.newAuthorizationFailures).isZero()
+    }
+
+    @Test fun `an unconfigured backup is an alert, not a healthy zero`() {
+        backup.configured = false
+
+        alerts.check()
+
+        assertThat(alertSignals.snapshot?.backupFailed).isTrue()
+    }
+
+    @Test fun `a lease expires and lets another worker take over`() {
+        requestDeletion()
+        clock.advance(Duration.ofDays(30))
+        val holder = lease.tryAcquire("maintenance", Duration.ofMinutes(10))!!
+
+        assertThat(lease.renew("maintenance", UUID.randomUUID(), Duration.ofMinutes(10))).isFalse()
+        assertThat(lease.renew("maintenance", holder, Duration.ofMinutes(10))).isTrue()
+
+        clock.advance(Duration.ofMinutes(11))
+
+        assertThat(lease.tryAcquire("maintenance", Duration.ofMinutes(10))).isNotNull()
+    }
+
+    @Test fun `a lease duration must be positive`() {
+        assertThatThrownBy { lease.tryAcquire("maintenance", Duration.ZERO) }
+            .isInstanceOf(IllegalArgumentException::class.java)
+    }
+
+    @Test fun `a healthy configured backup and a completed sweep do not alert`() {
+        backup.configured = true
+        backup.failed = false
+        retention.record(com.vik.ums.retention.RetentionReport(listOf(
+            com.vik.ums.retention.SweepClassResult("patch_receipts", 1, 0, 0))))
+
+        alerts.check()
+
+        assertThat(alertSignals.snapshot?.backupFailed).isFalse()
+        assertThat(alertSignals.snapshot?.failedRetentionSweeps).isZero()
     }
 
     private class AdjustableClock(@Volatile private var now: Instant) : Clock() {

@@ -59,8 +59,10 @@ class RecoveryConfiguration {
 
     @Bean
     @ConditionalOnProperty(name = ["ums.recovery.backup-status-file"])
-    fun backupMonitor(environment: Environment, clock: Clock, signals: BackupSignals): BackupMonitor =
-        BackupMonitor(Path.of(environment.getRequiredProperty("ums.recovery.backup-status-file")), clock, signals)
+    fun backupMonitor(environment: Environment, clock: Clock, signals: BackupSignals): BackupMonitor {
+        signals.configured = true
+        return BackupMonitor(Path.of(environment.getRequiredProperty("ums.recovery.backup-status-file")), clock, signals)
+    }
 
     @Bean
     @ConditionalOnProperty(name = ["ums.recovery.backup-status-file"])
