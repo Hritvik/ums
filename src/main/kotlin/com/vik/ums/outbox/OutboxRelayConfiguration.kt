@@ -37,11 +37,12 @@ class OutboxRelayConfiguration {
     fun outboxRelay(jdbc: JdbcTemplate, transactions: TransactionTemplate, transport: OutboxTransport,
                     clock: Clock, environment: Environment): OutboxRelay {
         val timeout = Duration.ofSeconds(environment.getProperty("ums.outbox.relay.timeout-seconds", "5").toLong())
-        val lease = Duration.parse(environment.getProperty("ums.outbox.relay.lease", "PT2M"))
+        val lease = Duration.parse(environment.getProperty("ums.outbox.relay.lease", "PT5M"))
         val batchSize = environment.getProperty("ums.outbox.relay.batch-size", "20").toInt()
-        // A pass can spend one timeout per claimed fact, so the lease must cover the whole batch;
-        // otherwise another instance can re-claim a fact while this pass is still publishing.
-        require(lease > timeout.multipliedBy(batchSize.toLong())) {
+        // A pass can spend a connect timeout and a request timeout per claimed fact, so the
+        // lease must cover a full batch twice over; otherwise another instance can re-claim a
+        // fact while this pass is still publishing.
+        require(lease > timeout.multipliedBy(batchSize.toLong() * 2)) {
             "The relay lease must exceed the transport timeout for a full batch"
         }
         return OutboxRelay(
@@ -107,6 +108,9 @@ class OutboxSignals(
         val fresh = try {
             relay.status()
         } catch (unavailable: Exception) {
+            // Keep the last snapshot, but do not re-query on every scrape for the duration of
+            // an outage.
+            if (cached != null) takenAt = now
             return cached
         }
         snapshot = fresh

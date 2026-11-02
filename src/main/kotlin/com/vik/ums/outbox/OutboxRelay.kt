@@ -50,6 +50,11 @@ class OutboxRelay(
         var failed = 0
         var quarantined = 0
         for (event in claimed) {
+            when (startAttempt(event)) {
+                AttemptStart.QUARANTINED -> { quarantined++; continue }
+                AttemptStart.LOST -> continue
+                AttemptStart.STARTED -> Unit
+            }
             try {
                 transport.publish(event.event)
             } catch (refused: OutboxTransportException) {
@@ -71,8 +76,16 @@ class OutboxRelay(
                 continue
             }
             // A local write failure here is not a transport failure: it must not consume the
-            // retry budget or quarantine a fact the consumer already accepted.
-            if (markPublished(event)) published++
+            // retry budget or quarantine a fact the consumer already accepted, and it must not
+            // abort the rest of the batch.
+            val marked = try {
+                markPublished(event)
+            } catch (unavailable: Exception) {
+                log.warn("Outbox event {} could not be marked published ({})",
+                    event.event.eventId, unavailable.javaClass.simpleName)
+                false
+            }
+            if (marked) published++
             else log.warn("Outbox event {} lost its claim before it could be marked", event.event.eventId)
         }
         return RelayPass(published, failed, quarantined)
@@ -82,7 +95,7 @@ class OutboxRelay(
     private fun claim(): List<ClaimedEvent> {
         val now = clock.instant()
         val rows = jdbc.query("""select o.event_id, o.application_id, o.stream_id, o.stream_revision,
-                o.event_type, o.payload::text, o.claims
+                o.event_type, o.payload::text
             from ums_event_outbox o
             where o.published_at is null and o.quarantined_at is null and o.next_attempt_at <= ?
               and not exists (select 1 from ums_event_outbox earlier
@@ -96,23 +109,30 @@ class OutboxRelay(
             { rs: ResultSet, _: Int -> event(rs) },
             Timestamp.from(now), batchSize)
         val leaseUntil = Timestamp.from(now.plus(lease))
-        val claimed = mutableListOf<ClaimedEvent>()
         rows.forEach { candidate ->
-            if (candidate.claims >= maxAttempts) {
-                // The row keeps coming back without ever recording a failure: a relay instance is
-                // dying mid-pass. Bound that loop instead of retrying it forever.
-                jdbc.update("""update ums_event_outbox set quarantined_at = ?, failure_class = ?,
-                    claim_token = null where event_id = ?""",
-                    Timestamp.from(now), OutboxFailureClass.RELAY_INTERRUPTED.name, candidate.event.eventId)
-                return@forEach
-            }
             val token = UUID.randomUUID()
-            jdbc.update("""update ums_event_outbox set claim_token = ?, next_attempt_at = ?,
-                claims = claims + 1 where event_id = ?""", token, leaseUntil, candidate.event.eventId)
+            jdbc.update("""update ums_event_outbox set claim_token = ?, next_attempt_at = ?
+                where event_id = ?""", token, leaseUntil, candidate.event.eventId)
             candidate.token = token
-            claimed += candidate
         }
-        return claimed
+        return rows
+    }
+
+    /**
+     * Counts the attempt on the one row about to be published, so a crash while publishing the
+     * first head cannot spend the interruption budget of the rest of the batch.
+     */
+    private fun startAttempt(claimed: ClaimedEvent): AttemptStart {
+        val started = jdbc.update("""update ums_event_outbox set claims = claims + 1
+            where event_id = ? and claim_token = ? and claims < ?""",
+            claimed.event.eventId, claimed.token, maxAttempts)
+        if (started == 1) return AttemptStart.STARTED
+        val quarantined = jdbc.update("""update ums_event_outbox set quarantined_at = ?,
+            failure_class = ?, claim_token = null
+            where event_id = ? and claim_token = ? and claims >= ?""",
+            Timestamp.from(clock.instant()), OutboxFailureClass.RELAY_INTERRUPTED.name,
+            claimed.event.eventId, claimed.token, maxAttempts)
+        return if (quarantined == 1) AttemptStart.QUARANTINED else AttemptStart.LOST
     }
 
     /** True only when this claim still owns the row; a stale claim cannot mark it published. */
@@ -200,7 +220,6 @@ class OutboxRelay(
             Timestamp.from(clock.instant()), eventId) == 1
 
     private fun event(rs: ResultSet): ClaimedEvent = ClaimedEvent(
-        claims = rs.getInt(7),
         event = OutboxEvent(
             eventId = rs.getObject(1, UUID::class.java),
             applicationId = rs.getString(2),
@@ -219,7 +238,9 @@ class OutboxRelay(
         val oldestQuarantine: Instant?,
     )
 
-    private class ClaimedEvent(val event: OutboxEvent, val claims: Int) { lateinit var token: UUID }
+    private class ClaimedEvent(val event: OutboxEvent) { lateinit var token: UUID }
+
+    private enum class AttemptStart { STARTED, QUARANTINED, LOST }
 
     private enum class FailureOutcome { REQUEUED, QUARANTINED, CLAIM_LOST }
 

@@ -83,6 +83,9 @@ class OutboxRelayConfigurationTest {
         context.refresh()
 
         assertThat(context.getBeanNamesForType(OutboxRelay::class.java)).isEmpty()
+        assertThat(context.getBeanNamesForType(OutboxTransport::class.java)).isEmpty()
+        assertThat(context.getBeanNamesForType(OutboxRelayScheduler::class.java)).isEmpty()
+        assertThat(context.getBeanNamesForType(OutboxSignals::class.java)).isEmpty()
         context.close()
     }
 

@@ -255,7 +255,7 @@ class OutboxRelayTest {
             clock.advance(Duration.ofMinutes(3))
         }
 
-        assertThat(relay.relayOnce()).isEqualTo(RelayPass(0, 0, 0))
+        assertThat(relay.relayOnce()).isEqualTo(RelayPass(0, 0, 1))
         assertThat(jdbc.queryForObject("select failure_class from ums_event_outbox where event_id = ?",
             String::class.java, event)).isEqualTo("RELAY_INTERRUPTED")
         assertThat(publishedAt(event)).isNull()
@@ -273,6 +273,31 @@ class OutboxRelayTest {
 
         clock.advance(Duration.ofSeconds(6))
         assertThat(signals!!.current()?.unpublishedCount).isZero()
+
+        // A database that disappears after the first snapshot keeps serving the last one.
+        val pool = com.zaxxer.hikari.HikariDataSource().apply {
+            jdbcUrl = postgres.jdbcUrl
+            username = postgres.username
+            password = postgres.password
+            maximumPoolSize = 2
+        }
+        val fragile = OutboxSignals(OutboxRelay(JdbcTemplate(pool), transactions, transport, clock), clock)
+        assertThat(fragile.current()).isNotNull()
+        pool.close()
+        clock.advance(Duration.ofSeconds(6))
+        assertThat(fragile.current()?.unpublishedCount).isEqualTo(0)
+    }
+
+    @Test fun `signals are unknown before the first snapshot`() {
+        val pool = com.zaxxer.hikari.HikariDataSource().apply {
+            jdbcUrl = postgres.jdbcUrl
+            username = postgres.username
+            password = postgres.password
+        }
+        pool.close()
+        signals = OutboxSignals(OutboxRelay(JdbcTemplate(pool), transactions, transport, clock), clock)
+
+        assertThat(signals!!.current()).isNull()
     }
 
     private class RecordingTransport : OutboxTransport {

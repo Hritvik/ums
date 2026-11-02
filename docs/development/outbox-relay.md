@@ -12,21 +12,24 @@ a visible quarantine, and operator signals.
   the row for two minutes, so two relay instances or overlapping passes do not publish the same
   head. The claim token is re-checked on both the publish mark and the failure bookkeeping, so a
   stale instance cannot mark or quarantine a row another instance has taken over.
-- The lease must exceed the transport timeout (validated at startup). It bounds the only case
+- The lease must exceed a full batch of connect-plus-request timeouts (validated at startup).
+  It bounds the only case
   where an in-flight publish can still be overtaken: a pass that stalls for longer than the lease.
   The stale copy is then republished after newer revisions, which is a duplicate the consumer must
   discard; ordering is never violated for first deliveries.
 - A fact is marked published only after the transport accepts the envelope. A crash between
   publish and mark replays the same event id, and the lease holds the retry back first. Nothing
   is marked published early, so no fact is lost.
-- A failure of the local mark write is not a transport failure: it never consumes the retry
-  budget and can never quarantine a fact the consumer already accepted.
+- A failure of the local mark write is not a transport failure: it is logged, never consumes the
+  retry budget, never quarantines a fact the consumer already accepted, and never aborts the rest
+  of the batch. The row stays unpublished and is replayed after its lease.
 - A failed head keeps its place and retries with exponential backoff (30 seconds doubling to one
   hour by default). Other bindings are independent and keep flowing.
-- Only genuine delivery failures count as attempts, so a crash loop does not spend the retry
-  budget of a fact that was never refused. A fact claimed the configured number of times without
-  ever recording a failure is quarantined as `RELAY_INTERRUPTED`, so a pass that keeps dying is
-  bounded rather than retried forever. After the configured number of failures the row is
+- Only genuine delivery failures count as delivery attempts. Separately, a fact is counted as
+  attempted when it is about to be published, so a crash while publishing one head does not spend
+  the interruption budget of the rest of the batch. A fact attempted the configured number of
+  times without ever recording a delivery failure is quarantined as `RELAY_INTERRUPTED`, so a
+  pass that keeps dying is bounded rather than retried forever. After the configured number of failures the row is
   quarantined with `TRANSPORT_UNAVAILABLE` or `TRANSPORT_REJECTED`. The
   quarantined head holds its own `(application, stream)` — later revisions of that binding are not
   published out of order — while every other stream continues. Nothing is discarded.
@@ -60,7 +63,7 @@ startup rather than accumulating retries.
 | `ums.outbox.relay.max-attempts` | `8` | attempts before quarantine |
 | `ums.outbox.relay.backoff-base` | `PT30S` | first retry delay, doubled per attempt |
 | `ums.outbox.relay.backoff-max` | `PT1H` | backoff ceiling |
-| `ums.outbox.relay.lease` | `PT2M` | claim lease before a crashed pass can retry; must exceed batch size × timeout |
+| `ums.outbox.relay.lease` | `PT5M` | claim lease before a crashed pass can retry; must exceed 2 × batch size × timeout |
 | `ums.outbox.relay.timeout-seconds` | `5` | HTTP request timeout |
 
 ## Operator signals
@@ -89,9 +92,11 @@ Only a quarantined row can be re-driven; the call is a no-op otherwise.
 ## Verification
 
 `OutboxRelayTest` runs against real PostgreSQL and covers revision ordering, one head per pass,
-backoff and its due time, quarantine after the attempt limit, isolation of a stuck stream,
-re-driving with the same identity, a simulated crash after the transport accepted (the duplicate
-replay), due/unpublished claiming, the status and gauge values, and the scheduler and repair
+backoff and its due time, quarantine after the attempt limit, isolation of a stuck stream, a
+stream that only becomes due after a quarantine, re-driving with the same identity, a simulated
+crash after the transport accepted (the duplicate replay), the lease hold-back after a crash, a
+relay that keeps dying (bounded as `RELAY_INTERRUPTED`), due/unpublished claiming, the status and
+gauge values, the snapshot window including a failed refresh, and the scheduler and repair
 runner. `HttpOutboxTransport` is tested against a real local HTTP server for acceptance, a
 retryable status, a refused status, and an unreachable endpoint.
 
