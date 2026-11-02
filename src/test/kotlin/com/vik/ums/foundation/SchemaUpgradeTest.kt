@@ -108,6 +108,13 @@ class SchemaUpgradeTest {
             (issuer_environment_ref, app_reference, subject_reference, request_reference,
              retired_profile_reference, retired_generation, erased_binding_revision)
             values (?, ?, ?, ?, ?, 2, 3)""", issuer, app, erasedSubject, erasedRequest, retiredProfile)
+        val expiredProfile = UUID.randomUUID()
+        jdbc.update("""insert into ums_profile_expiry_fences
+            (fence_reference, issuer_environment_ref, app_reference, subject_reference,
+             retired_profile_reference, retired_generation, closure_at, erased_binding_revision, erased_at)
+            values (?, ?, ?, ?, ?, 4, ?, 5, ?)""",
+            UUID.randomUUID(), issuer, app, UUID.randomUUID(), expiredProfile,
+            java.sql.Timestamp.from(acceptedAt), java.sql.Timestamp.from(erasedAt))
 
         flyway(jdbc).migrate()
 
@@ -116,8 +123,16 @@ class SchemaUpgradeTest {
             from ums_profile_erasure_obligations where retired_profile_reference = ?""",
             String::class.java, retiredProfile))
             .isEqualTo("APP_DELETION:$erasedRequest:$retiredProfile:2:3")
+        assertThat(jdbc.queryForObject("""select obligation_kind || ':' || (cause_reference is null) || ':'
+                || retired_generation || ':' || (obligation_at = ?)
+            from ums_profile_erasure_obligations where retired_profile_reference = ?""",
+            String::class.java, java.sql.Timestamp.from(acceptedAt), expiredProfile))
+            .isEqualTo("CLOSURE_EXPIRY:true:4:true")
         assertThat(jdbc.queryForObject("select count(*) from ums_profile_erasure_obligations",
-            Int::class.java)).isEqualTo(1)
+            Int::class.java)).isEqualTo(2)
+        assertThat(jdbc.queryForObject("""select lifecycle || ':' || (profile_reference is null)
+            from ums_profile_bindings where subject_reference = ?""", String::class.java, erasedSubject))
+            .isEqualTo("ERASED:true")
         assertThat(jdbc.queryForObject("""select status || ':' || generation || ':' ||
                 (deadline = accepted_at + interval '720 hours')
             from ums_profile_deletion_requests where request_reference = ?""", String::class.java, pendingRequest))

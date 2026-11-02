@@ -61,7 +61,7 @@ class RestoreDrillTest {
         ProfileProvisioningService(jdbc, transactions, mapper, "test", clock)
             .provision(TrustedOnboardingFact(scope, "iam", UUID.randomUUID(), "entry", 1, "drill"))
         jdbc.update("update ums_profile_bindings set display_name = 'Private Name', display_locale = 'en'")
-        val backupAgeAtRestore = Instant.now()
+        val backupTakenBefore = Instant.now()
         dump("ums_drill_backup.sql")
         val backupTakenAt = Instant.now()
 
@@ -87,7 +87,11 @@ class RestoreDrillTest {
         val restoredJdbc = JdbcTemplate(restored)
         val restoredTransactions = TransactionTemplate(DataSourceTransactionManager(restored))
         // The upgrade rehearsal runs against the restored copy: forward migrate, then reconcile.
-        Flyway.configure().dataSource(restored).load().migrate()
+        val restoredFlyway = Flyway.configure().dataSource(restored).load()
+        assertThat(restoredFlyway.info().current()?.version?.version).isEqualTo("22")
+        val upgrade = restoredFlyway.migrate()
+        assertThat(upgrade.migrationsExecuted).isEqualTo(1)
+        assertThat(restoredFlyway.info().current()?.version?.version).isEqualTo("23")
 
         // The restored copy carries the pre-deletion row and no journal feed: the evidence must
         // come from outside the backup.
@@ -112,7 +116,7 @@ class RestoreDrillTest {
             Int::class.java)!!
         val migration = restoredJdbc.queryForObject("select max(version::int) from flyway_schema_history",
             String::class.java)!!
-        assertThat(Flyway.configure().dataSource(restored).load().info().pending()).isEmpty()
+        assertThat(restoredFlyway.info().pending()).isEmpty()
         val checkpoints = restoredJdbc.queryForObject("select count(*) from ums_input_checkpoints", Int::class.java)!!
         val backupAge = Duration.between(backupTakenAt, restoreStarted)
         val record = mapOf(

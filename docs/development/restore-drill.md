@@ -6,15 +6,18 @@ This is the evidence the privacy-capable deployment gate asks for, recorded from
 
 ## Recorded drill
 
+These are one representative local run; timings vary by host. The test writes the numbers it
+actually observed to `build/restore-drill.json`.
+
 | Item | Result |
 |---|---|
-| Backup age at restore | 173 ms (the drill dumps and restores within one test; production age comes from the backup monitor) |
+| Backup age at restore | 122 ms (the drill dumps and restores within one test; production age comes from the backup monitor) |
 | Lost changes | 1 — the erasure performed after the backup |
 | Restored fences, before reconciliation | 0 |
 | Restored fences, after reconciliation | 1 (`APP_DELETION` obligation for the retired generation) |
 | Migration result | 22 → 23 (the restored copy is upgraded before reconciliation) |
 | Checkpoint convergence | 1 checkpoint restored, unchanged by reconciliation |
-| Elapsed recovery | 252 ms from restore start to verified erased state |
+| Elapsed recovery | 269 ms from restore start to verified erased state |
 | Journal entries replayed | 1 |
 
 Post-conditions verified in the restored copy: `lifecycle = ERASED`, display name and all display
