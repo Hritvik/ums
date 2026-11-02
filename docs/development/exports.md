@@ -21,8 +21,10 @@ minutes by default and configurable through `ums.privacy.export-sweep.*`) does t
 nobody polls the export, and it deletes expired capability rows.
 
 A capability expires after five minutes and is consumed on first successful download — a
-retry, replay, or second reader is unavailable. Only one live capability exists per export, so
-"single use" cannot be traded for many redeemable tokens. The token is stored only as a
+retry, replay, or second reader is unavailable. Only one live capability exists per export and
+the database enforces it (partial unique index in `V17`); a new request replaces the previous
+token, so a lost response can be recovered and "single use" cannot be traded for many
+redeemable tokens. The token is stored only as a
 SHA-256 hash, it travels in a request body rather than a URL, and it never appears in an event.
 The caller's own app subject must still match the export: a capability stolen by another
 subject is unavailable.
@@ -54,11 +56,12 @@ no app subject, identity, contact detail, credential, or token.
 
 ## Verification
 
-232+ JVM tests, 7 contract tests, producer/input checks, and the coverage gate.
-Service tests cover the closed artifact and idempotent replay, single use, one live
-capability, cross-subject redemption, the five-minute capability boundary, the 24-hour
-artifact boundary with payload removal and the unattended sweep, invalidation by app-only
-restriction, finalization, IAM-global pending, closure and expiry, and weak or stale authority. HTTP tests cover request, status, capability,
+250 JVM tests, 7 contract tests, 23 producer/input checks, 96.6% line / 80.7% branch.
+Service tests cover the closed artifact and idempotent replay, single use including two
+concurrent redemptions, one live capability including two concurrent requests, cross-subject
+redemption, the five-minute capability boundary, the 24-hour artifact boundary with payload
+removal and the unattended sweep, invalidation by app-only restriction, finalization,
+IAM-global pending, closure and expiry, and weak or stale authority. HTTP tests cover request, status, capability,
 one successful download, the refused second download, unknown references, and weak
 authority. Producer checks validate the actual persisted artifact and capability against
 the published schemas.

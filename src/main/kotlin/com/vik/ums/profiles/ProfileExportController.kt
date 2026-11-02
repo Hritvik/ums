@@ -29,7 +29,6 @@ import java.util.UUID
 class ProfileExportController(
     private val exports: ProfileExportService,
     private val scopes: ProfileScopeResolver,
-    private val mapper: ObjectMapper,
     private val maximumStrongAge: Duration,
     private val clock: Clock = Clock.systemUTC(),
 ) {
@@ -65,6 +64,8 @@ class ProfileExportController(
             ResponseEntity.ok(mapOf("data" to exports.status(authority, parsed)))
         } catch (unavailable: IllegalStateException) {
             failure(response, 404, "unavailable", "Export is unavailable", correlation)
+        } catch (invalid: IllegalArgumentException) {
+            failure(response, 403, "forbidden", "Recent strong authentication is required", correlation)
         }
     }
 
@@ -134,9 +135,9 @@ class ProfileExportController(
     /** Null means a malformed body; the token must be exactly the issued 43-character shape. */
     private fun token(request: HttpServletRequest): String? {
         if (request.contentType?.startsWith("application/json") != true) return null
-        val body = request.inputStream.readNBytes(MAX_BODY + 1)
-        if (body.size > MAX_BODY) return null
         return runCatching {
+            val body = request.inputStream.readNBytes(MAX_BODY + 1)
+            require(body.size <= MAX_BODY)
             val root = strict.readValue(body, JsonNode::class.java)
             require(root.isObject && root.fieldNames().asSequence().toSet() == setOf("token"))
             val value = root.get("token")

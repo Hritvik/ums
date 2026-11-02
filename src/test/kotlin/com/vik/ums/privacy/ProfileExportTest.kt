@@ -14,6 +14,7 @@ import org.junit.jupiter.api.Test
 import org.springframework.jdbc.core.JdbcTemplate
 import org.springframework.jdbc.datasource.DataSourceTransactionManager
 import org.springframework.jdbc.datasource.DriverManagerDataSource
+import org.springframework.scheduling.annotation.Scheduled
 import org.springframework.transaction.support.TransactionTemplate
 import org.testcontainers.containers.PostgreSQLContainer
 import org.testcontainers.junit.jupiter.Container
@@ -23,7 +24,12 @@ import java.time.Duration
 import java.time.Instant
 import java.time.ZoneId
 import java.time.ZoneOffset
+import java.sql.Timestamp
 import java.util.UUID
+import java.util.concurrent.Callable
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
 
 @Testcontainers
 class ProfileExportTest {
@@ -75,6 +81,23 @@ class ProfileExportTest {
     private fun payloadDropped(): Boolean = jdbc.queryForObject(
         "select artifact is null from ums_profile_exports", Boolean::class.java) == true
 
+    /**
+     * A READY row seeded directly, so an invalidation hook can be tested after the profile is
+     * already restricted (the public request path would refuse to create one then).
+     */
+    private fun seedReadyExport(): UUID {
+        val reference = UUID.randomUUID()
+        val now = clock.instant()
+        jdbc.update("""insert into ums_profile_exports
+            (export_reference, issuer_environment_ref, app_reference, subject_reference, state,
+             requested_at, expires_at, artifact)
+            values (?, ?, ?, ?, 'READY', ?, ?, ?::jsonb)""",
+            reference, scope.issuerEnvironmentRef, scope.appReference, scope.subjectReference,
+            Timestamp.from(now), Timestamp.from(now.plus(Duration.ofHours(24))),
+            """{"profileRevision":"1","readiness":"PROFILE_READY","lifecycle":"ACTIVE","fields":{},"generatedAt":"2026-11-01T09:00:00Z"}""")
+        return reference
+    }
+
     @Test fun `a request produces a closed artifact and replays idempotently`() {
         val key = UUID.randomUUID()
         val actor = authority()
@@ -120,12 +143,55 @@ class ProfileExportTest {
             .isInstanceOf(IllegalStateException::class.java)
     }
 
-    @Test fun `only one live capability exists at a time`() {
+    @Test fun `a new capability replaces the previous one`() {
         val export = ready()
-        exports.capability(authority(), export)
+        val first = exports.capability(authority(), export)
+        val second = exports.capability(authority(), export)
 
-        assertThatThrownBy { exports.capability(authority(), export) }
+        assertThat(first.token).isNotEqualTo(second.token)
+        assertThat(jdbc.queryForObject("""select count(*) from ums_profile_export_capabilities
+            where export_reference = ? and consumed_at is null""", Int::class.java, export)).isEqualTo(1)
+        assertThatThrownBy { exports.download(scope, first.token) }
             .isInstanceOf(IllegalStateException::class.java)
+        assertThat(exports.download(scope, second.token).fields["displayName"]).isEqualTo("Ada")
+    }
+
+    @Test fun `concurrent capability requests leave exactly one live token`() {
+        val export = ready()
+        val start = CountDownLatch(1)
+        val pool = Executors.newFixedThreadPool(2)
+        val tokens = try {
+            val futures = (1..2).map {
+                pool.submit(Callable { start.await(); exports.capability(authority(), export).token })
+            }
+            start.countDown()
+            futures.map { it.get(10, TimeUnit.SECONDS) }
+        } finally {
+            pool.shutdownNow()
+        }
+
+        assertThat(tokens.toSet()).hasSize(2)
+        assertThat(jdbc.queryForObject("""select count(*) from ums_profile_export_capabilities
+            where export_reference = ? and consumed_at is null""", Int::class.java, export)).isEqualTo(1)
+        assertThat(tokens.count { runCatching { exports.download(scope, it) }.isSuccess }).isEqualTo(1)
+    }
+
+    @Test fun `a capability cannot be consumed twice concurrently`() {
+        val export = ready()
+        val token = exports.capability(authority(), export).token
+        val start = CountDownLatch(1)
+        val pool = Executors.newFixedThreadPool(2)
+        val succeeded = try {
+            val futures = (1..2).map {
+                pool.submit(Callable { start.await(); runCatching { exports.download(scope, token) }.isSuccess })
+            }
+            start.countDown()
+            futures.map { it.get(10, TimeUnit.SECONDS) }
+        } finally {
+            pool.shutdownNow()
+        }
+
+        assertThat(succeeded.count { it }).isEqualTo(1)
     }
 
     @Test fun `another subject cannot redeem someone else's capability`() {
@@ -188,16 +254,16 @@ class ProfileExportTest {
     }
 
     @Test fun `finalization invalidates an outstanding export`() {
-        val export = ready()
         val accepted = deletion.request(TrustedPrivacyAuthority(scope, UUID.randomUUID(),
             PrivacyPurpose.REQUEST_DELETION, clock.instant(), true, clock.instant().plus(Duration.ofMinutes(10))),
             DeletionRequestCommand(UUID.randomUUID(), 1, "export"))
+        seedReadyExport()
         clock.advance(Duration.ofDays(30))
+        assertThat(state()).isEqualTo("READY")
 
         finalizer.finalize(TrustedMaintenanceAuthority(app, UUID.randomUUID(),
             MaintenancePurpose.FINALIZE_APP_DELETION), scope, accepted.operationReference, "export")
 
-        assertThat(exports.status(authority(), export).status).isEqualTo("FAILED")
         assertThat(state()).isEqualTo("INVALIDATED")
         assertThat(payloadDropped()).isTrue()
     }
@@ -213,18 +279,26 @@ class ProfileExportTest {
         assertThat(payloadDropped()).isTrue()
     }
 
-    @Test fun `closure invalidates an outstanding export and expiry keeps it revoked`() {
+    @Test fun `closure invalidates an outstanding export`() {
         val export = ready()
         val capability = exports.capability(authority(), export)
 
         closure.close(TrustedClosureFact(scope, clock.instant(), UUID.randomUUID(), "export"))
+
         assertThat(exports.status(authority(), export).status).isEqualTo("FAILED")
         assertThat(payloadDropped()).isTrue()
         assertThatThrownBy { exports.download(scope, capability.token) }
             .isInstanceOf(IllegalStateException::class.java)
+    }
 
+    @Test fun `expiry invalidates a retained export`() {
+        closure.close(TrustedClosureFact(scope, clock.instant(), UUID.randomUUID(), "export"))
+        seedReadyExport()
         clock.advance(Duration.ofDays(91))
+        assertThat(state()).isEqualTo("READY")
+
         expiry.expire(TrustedExpiryFact(scope, UUID.randomUUID(), "export"))
+
         assertThat(state()).isEqualTo("INVALIDATED")
         assertThat(payloadDropped()).isTrue()
     }
@@ -248,6 +322,8 @@ class ProfileExportTest {
 
     @Test fun `the scheduler sweeps quietly when nothing is due`() {
         val scheduler = ProfileExportSweepScheduler(exports)
+        assertThat(ProfileExportSweepScheduler::class.java.getMethod("sweep")
+            .getAnnotation(Scheduled::class.java)).isNotNull()
         scheduler.sweep()
 
         exports.capability(authority(), ready())

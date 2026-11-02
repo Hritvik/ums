@@ -88,7 +88,7 @@ class ProfileStatusHttpTest {
             ProfileController(editing, scopeResolver, mapper),
             ProfilePatchController(editing, provisioning, scopeResolver, mapper),
             ProfilePrivacyController(deletion, scopeResolver, mapper, Duration.ofMinutes(5)),
-            ProfileExportController(exports, scopeResolver, mapper, Duration.ofMinutes(5)),
+            ProfileExportController(exports, scopeResolver, Duration.ofMinutes(5)),
         )
             .addInterceptors(CallerAuthorityInterceptor(resolver, mapper))
             .build()

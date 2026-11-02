@@ -40,6 +40,11 @@ class ProfileExportService(
         authorize(authority)
         val scope = authority.scope
         val fingerprint = sha256("export")
+        // The registered policy row is the shared application lock: an export cannot be built
+        // from a binding that a concurrent deletion, closure, or expiry is about to replace, and
+        // two retries of one key cannot both miss the receipt and race the receipt primary key.
+        val policy = lockedPolicy(jdbc, mapper, AppScope(scope.issuerEnvironmentRef, scope.appReference))
+            ?: throw IllegalStateException("Profile capability is unavailable")
         jdbc.query("""select export_reference from ums_profile_export_receipts
             where issuer_environment_ref = ? and app_reference = ? and subject_reference = ?
             and actor_reference = ? and idempotency_key = ?""",
@@ -49,10 +54,6 @@ class ProfileExportService(
             // A replay reports what the original export is now, not what it was when accepted.
             return@execute ExportStatus(existing, "1", load(scope, existing).state.openStatus())
         }
-        // The registered policy row is the shared application lock: an export cannot be built
-        // from a binding that a concurrent deletion, closure, or expiry is about to replace.
-        val policy = lockedPolicy(jdbc, mapper, AppScope(scope.issuerEnvironmentRef, scope.appReference))
-            ?: throw IllegalStateException("Profile capability is unavailable")
         val state = bindings.binding(scope)
         check(state?.lifecycle == Lifecycle.ACTIVE) { "Profile is unavailable" }
         val present = fields.fields(scope)
@@ -90,18 +91,17 @@ class ProfileExportService(
     }!!
 
     /**
-     * At most one live capability exists per export. A second capability would make "single
-     * use" true only per token, and it would accumulate redeemable copies of the artifact.
+     * Exactly one live capability exists per export: a new request replaces the previous token,
+     * so "single use" can never be traded for many redeemable tokens. The export row is locked
+     * so two concurrent requests cannot both mint a token.
      */
     fun capability(authority: TrustedExportAuthority, reference: UUID): ExportCapability = transactions.execute {
         authorize(authority)
         val now = clock.instant()
-        val export = load(authority.scope, reference)
+        val export = loadForUpdate(authority.scope, reference)
         check(export.state == ExportState.READY && now.isBefore(export.expiresAt)) { "Export is unavailable" }
-        val outstanding = jdbc.queryForObject("""select count(*) from ums_profile_export_capabilities
-            where export_reference = ? and consumed_at is null and expires_at > ?""",
-            Int::class.java, reference, Timestamp.from(now)) ?: 0
-        check(outstanding == 0) { "A download capability is already outstanding" }
+        jdbc.update("""delete from ums_profile_export_capabilities
+            where export_reference = ? and consumed_at is null""", reference)
         val token = ByteArray(32).also(random::nextBytes)
             .let { Base64.getUrlEncoder().withoutPadding().encodeToString(it) }
         val expiresAt = now.plus(CAPABILITY_LIFETIME).truncatedTo(ChronoUnit.MICROS)
@@ -158,6 +158,14 @@ class ProfileExportService(
         jdbc.query("""select state, expires_at from ums_profile_exports
             where issuer_environment_ref = ? and app_reference = ? and subject_reference = ?
             and export_reference = ?""",
+            { rs, _ -> StoredExport(ExportState.valueOf(rs.getString(1)), rs.getTimestamp(2).toInstant()) },
+            scope.issuerEnvironmentRef, scope.appReference, scope.subjectReference, reference)
+            .singleOrNull() ?: throw IllegalStateException("Export is unavailable")
+
+    private fun loadForUpdate(scope: ProfileScope, reference: UUID): StoredExport =
+        jdbc.query("""select state, expires_at from ums_profile_exports
+            where issuer_environment_ref = ? and app_reference = ? and subject_reference = ?
+            and export_reference = ? for update""",
             { rs, _ -> StoredExport(ExportState.valueOf(rs.getString(1)), rs.getTimestamp(2).toInstant()) },
             scope.issuerEnvironmentRef, scope.appReference, scope.subjectReference, reference)
             .singleOrNull() ?: throw IllegalStateException("Export is unavailable")
