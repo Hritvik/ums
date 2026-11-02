@@ -358,5 +358,15 @@
     "file": "deletion-status-superseded.json",
     "schema": "deletion-request-status.json",
     "valid": true
+  },
+  {
+    "file": "export-download.json",
+    "schema": "export-download.json",
+    "valid": true
+  },
+  {
+    "file": "export-artifact.json",
+    "schema": "export-artifact.json",
+    "valid": true
   }
 ]

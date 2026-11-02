@@ -24,6 +24,11 @@ class ProfileServiceConfiguration {
         java.time.Duration.ofSeconds(environment.getRequiredProperty("ums.profile.privacy.max-strong-age-seconds").toLong())
 
     @Bean
+    fun profileExportService(jdbc: JdbcTemplate, transactions: TransactionTemplate,
+                             mapper: ObjectMapper, clock: java.time.Clock): com.vik.ums.privacy.ProfileExportService =
+        com.vik.ums.privacy.ProfileExportService(jdbc, transactions, mapper, clock)
+
+    @Bean
     fun profileDeletionService(jdbc: JdbcTemplate, transactions: TransactionTemplate,
                                mapper: ObjectMapper, environment: Environment, clock: java.time.Clock,
                                maximumStrongAge: java.time.Duration): com.vik.ums.privacy.ProfileDeletionService =

@@ -57,6 +57,8 @@ class ProfileGlobalDeletionService(
             persistence.replaceGlobalCause(fact.scope, fact.sourceRevision, fact.acceptedAt, fact.deadline)
             val after = bindings.binding(fact.scope)!!
             events.emit(after, "DELETION_REQUESTED", fact.eventId, fact.correlationId)
+            // Restriction invalidates any exported copy immediately, whatever the deadline ordering.
+            invalidateExportsFor(jdbc, fact.scope, clock.instant())
             // Only an obligation earlier than the retention deadline supersedes its notices.
             val closureDeadline = bindings.closureDeadline(fact.scope)
             if (closureDeadline == null || fact.deadline.isBefore(closureDeadline)) {
@@ -131,6 +133,7 @@ class ProfileGlobalDeletionService(
             markPendingRequestsSuperseded(fact.scope)
             lifecycle.recordErasedObligation(fact.scope, "IAM_GLOBAL", fact.eventId, current.profileReference!!,
                 current.generation!!.toLong(), fact.occurredAt, superseded, revision, clock.instant())
+            invalidateExportsFor(jdbc, fact.scope, clock.instant())
             suppressNotices(jdbc, mapper, environment, fact.scope, fact.correlationId, clock.instant())
             lifecycle.recordEvidence(fact.scope, "GLOBAL_ERASED", revision, fact.occurredAt, null,
                 clock.instant(), fact.eventId, fact.correlationId)

@@ -71,6 +71,10 @@ class SecurityConfiguration {
                 .requestMatchers(HttpMethod.GET, "/api/v1/profile/deletion-requests").authenticated()
                 .requestMatchers(HttpMethod.GET, "/api/v1/profile/deletion-requests/*").authenticated()
                 .requestMatchers(HttpMethod.POST, "/api/v1/profile/deletion-requests/*/cancellation").authenticated()
+                .requestMatchers(HttpMethod.POST, "/api/v1/profile/exports").authenticated()
+                .requestMatchers(HttpMethod.GET, "/api/v1/profile/exports").authenticated()
+                .requestMatchers(HttpMethod.POST, "/api/v1/profile/exports/*/downloads").authenticated()
+                .requestMatchers(HttpMethod.GET, "/api/v1/profile/exports/downloads/*").authenticated()
                 .requestMatchers(HttpMethod.GET, "/api/v1/profile/status").authenticated()
                 .anyRequest().denyAll()
         }

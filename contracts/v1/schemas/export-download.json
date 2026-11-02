@@ -1,0 +1,12 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ums.invalid/contracts/v1/export-download.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["exportReference", "token", "expiresAt"],
+  "properties": {
+    "exportReference": { "$ref": "common.json#/$defs/uuid" },
+    "token": { "type": "string", "pattern": "^[A-Za-z0-9_-]{43}(?![\\s\\S])" },
+    "expiresAt": { "$ref": "common.json#/$defs/timestamp" }
+  }
+}

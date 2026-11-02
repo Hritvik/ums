@@ -3,6 +3,7 @@ package com.vik.ums.profiles
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import com.vik.ums.foundation.CallerAuthorityInterceptor
 import com.vik.ums.privacy.ProfileDeletionService
+import com.vik.ums.privacy.ProfileExportService
 import com.vik.ums.iam.CallerRegistrations
 import com.vik.ums.iam.IamCallerResolver
 import org.assertj.core.api.Assertions.assertThat
@@ -80,11 +81,13 @@ class ProfileStatusHttpTest {
             ProfileCatalogs("l1", setOf("en"), "t1", setOf("UTC")), HmacPatchFingerprint(ByteArray(32) { 7 }))
         val scopeResolver = ProfileScopeResolver(jdbc, issuerEnvironmentRef)
         val deletion = ProfileDeletionService(jdbc, tx, mapper, "test", java.time.Clock.systemUTC(), Duration.ofMinutes(5))
+        val exports = ProfileExportService(jdbc, tx, mapper, java.time.Clock.systemUTC())
         mockMvc = MockMvcBuilders.standaloneSetup(
             ProfileStatusController(provisioning, scopeResolver, mapper),
             ProfileController(editing, scopeResolver, mapper),
             ProfilePatchController(editing, provisioning, scopeResolver, mapper),
             ProfilePrivacyController(deletion, scopeResolver, mapper, Duration.ofMinutes(5)),
+            ProfileExportController(exports, scopeResolver, mapper, Duration.ofMinutes(5)),
         )
             .addInterceptors(CallerAuthorityInterceptor(resolver, mapper))
             .build()
@@ -241,6 +244,12 @@ class ProfileStatusHttpTest {
     }
 
     private fun uuid(): String = UUID.randomUUID().toString()
+
+    private fun write(name: String, value: String) {
+        val directory = java.nio.file.Path.of("build", "generated-contract-fixtures")
+        java.nio.file.Files.createDirectories(directory)
+        java.nio.file.Files.writeString(directory.resolve("$name.json"), value)
+    }
 
     @Test fun `request status and cancellation form one privacy journey`() {
         authenticate()
@@ -427,6 +436,54 @@ class ProfileStatusHttpTest {
         mockMvc.perform(post("/api/v1/profile/deletion-requests").contentType(MediaType.APPLICATION_JSON)
             .header("Idempotency-Key", uuid()).content("""{"expectedVersion":1}"""))
             .andExpect(status().isForbidden)
+    }
+
+    @Test fun `an export is requested, downloaded once, and then unavailable`() {
+        authenticate()
+        val requested = mockMvc.perform(post("/api/v1/profile/exports")
+            .header("Idempotency-Key", uuid()))
+            .andExpect(status().isAccepted)
+            .andExpect(jsonPath("$.data.status").value("ACCEPTED"))
+            .andReturn().getResponse().getContentAsString()
+        val reference = mapper.readTree(requested)["data"]["operationReference"].asText()
+
+        mockMvc.perform(get("/api/v1/profile/exports").param("operationReference", reference))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.data.status").value("LOCAL_COMPLETED"))
+
+        val capability = mockMvc.perform(post("/api/v1/profile/exports/$reference/downloads"))
+            .andExpect(status().isCreated)
+            .andExpect(jsonPath("$.data.token").exists())
+            .andReturn().getResponse().getContentAsString()
+        val token = mapper.readTree(capability)["data"]["token"].asText()
+        write("export-download", mapper.writeValueAsString(mapper.readTree(capability)["data"]))
+
+        val artifact = mockMvc.perform(get("/api/v1/profile/exports/downloads/$token"))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.data.lifecycle").value("ACTIVE"))
+            .andExpect(jsonPath("$.data.generatedAt").exists())
+            .andReturn().getResponse().getContentAsString()
+        write("export-artifact", mapper.writeValueAsString(mapper.readTree(artifact)["data"]))
+        mockMvc.perform(get("/api/v1/profile/exports/downloads/$token"))
+            .andExpect(status().isNotFound)
+            .andExpect(jsonPath("$.error.code").value("unavailable"))
+    }
+
+    @Test fun `an export needs recent strong authentication`() {
+        authenticate(acr = "urn:distracted:aal1")
+
+        mockMvc.perform(post("/api/v1/profile/exports").header("Idempotency-Key", uuid()))
+            .andExpect(status().isForbidden)
+    }
+
+    @Test fun `an unknown export or capability is unavailable`() {
+        authenticate()
+        mockMvc.perform(get("/api/v1/profile/exports").param("operationReference", uuid()))
+            .andExpect(status().isNotFound)
+        mockMvc.perform(post("/api/v1/profile/exports/not-a-uuid/downloads"))
+            .andExpect(status().isNotFound)
+        mockMvc.perform(get("/api/v1/profile/exports/downloads/" + "x".repeat(43)))
+            .andExpect(status().isNotFound)
     }
 
     @Test fun `an unauthenticated request is refused before the handler`() {

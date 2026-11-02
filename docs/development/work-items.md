@@ -270,7 +270,7 @@ Five provider inputs do not exist yet and are carried as named gaps rather than 
 
 **Summary.** A person is entitled to a copy of the data UMS holds about them for one app. That copy must not become a permanent second store of personal data, and it must disappear if the profile is deleted while it exists. This item adds export generation, a short-lived download, and the invalidation rules around them.
 
-**Status.** Planned — not started.
+**Status.** Green — implemented and verified; awaiting review.
 
 **Work to be done.**
 - Define and publish the export contract before implementing it: the artifact states, the 24-hour artifact lifetime, and the single-use download capability of at most five minutes.

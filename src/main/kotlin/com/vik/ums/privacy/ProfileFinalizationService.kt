@@ -50,6 +50,7 @@ class ProfileFinalizationService(
                 where issuer_environment_ref = ? and app_reference = ? and subject_reference = ?""", Boolean::class.java,
                 scope.issuerEnvironmentRef, scope.appReference, scope.subjectReference) == true, FinalizationBlockReason.CONTENT_AUTHORITY_UNAVAILABLE)
             erase(scope, request, before)
+            invalidateExportsFor(jdbc, scope, now)
             suppressNotices(jdbc, mapper, environment, scope, correlationId, now)
             val after = bindings.binding(scope)!!
             audit(authority, request, after, now, correlationId)

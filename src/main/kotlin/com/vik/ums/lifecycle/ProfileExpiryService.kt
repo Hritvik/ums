@@ -2,6 +2,7 @@ package com.vik.ums.lifecycle
 
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.vik.ums.notices.suppressNotices
+import com.vik.ums.privacy.invalidateExportsFor
 import com.vik.ums.profiles.Lifecycle
 import com.vik.ums.profiles.ProfilePersistence
 import com.vik.ums.profiles.ProfileScope
@@ -81,6 +82,7 @@ class ProfileExpiryService(
             fact.scope.issuerEnvironmentRef, fact.scope.appReference, fact.scope.subjectReference)
         persistence.recordErasedObligation(fact.scope, "CLOSURE_EXPIRY", null, profileReference,
             generation.toLong(), recorded.closedAt, superseded, revision, now)
+        invalidateExportsFor(jdbc, fact.scope, now)
         suppressNotices(jdbc, mapper, environment, fact.scope, fact.correlationId, now)
         persistence.recordEvidence(fact.scope, "EXPIRED", revision, now, null, now, fact.eventId, fact.correlationId)
 

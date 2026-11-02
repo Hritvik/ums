@@ -34,6 +34,8 @@ class ProfileDeletionService(
         val acceptedAt = now.truncatedTo(java.time.temporal.ChronoUnit.MICROS)
         val deletionDeadline = acceptedAt.plus(Duration.ofDays(30))
         persistence.accept(before, reference, acceptedAt, deletionDeadline)
+        // Restriction revokes any exported copy immediately.
+        invalidateExportsFor(jdbc, authority.scope, now)
         // Only an obligation earlier than the retention deadline supersedes its notices.
         val closureDeadline = bindings.closureDeadline(authority.scope)
         if (closureDeadline == null || deletionDeadline.isBefore(closureDeadline)) {

@@ -1531,6 +1531,250 @@
           }
         }
       }
+    },
+    "/api/v1/profile/exports/{exportReference}/downloads": {
+      "post": {
+        "summary": "Issue a single-use download capability for an own export",
+        "description": "Implemented. The capability expires within five minutes, is consumed on first use, and never travels in an event.",
+        "security": [
+          {
+            "umsBearer": []
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Private response; Cache-Control: no-store required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data"
+                  ],
+                  "additionalProperties": false,
+                  "properties": {
+                    "data": {
+                      "$ref": "./schemas/export-download.json"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed input",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./schemas/safe-error.json"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid authentication",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./schemas/safe-error.json"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden action",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./schemas/safe-error.json"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Unavailable target (non-enumerating)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./schemas/safe-error.json"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "State/version conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./schemas/safe-error.json"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unsupported or invalid field value",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./schemas/safe-error.json"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Quota exceeded",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./schemas/safe-error.json"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Safe internal error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./schemas/safe-error.json"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Temporarily unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./schemas/safe-error.json"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/profile/exports/downloads/{token}": {
+      "get": {
+        "summary": "Consume an export download capability",
+        "description": "Implemented. The capability is single-use; an expired, consumed, invalidated or erased export is unavailable.",
+        "security": [
+          {
+            "umsBearer": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Private response; Cache-Control: no-store required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data"
+                  ],
+                  "additionalProperties": false,
+                  "properties": {
+                    "data": {
+                      "$ref": "./schemas/export-artifact.json"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid authentication",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./schemas/safe-error.json"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Unavailable target (non-enumerating)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./schemas/safe-error.json"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed input",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./schemas/safe-error.json"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden action",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./schemas/safe-error.json"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "State/version conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./schemas/safe-error.json"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unsupported or invalid field value",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./schemas/safe-error.json"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Quota exceeded",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./schemas/safe-error.json"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Safe internal error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./schemas/safe-error.json"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Temporarily unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./schemas/safe-error.json"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {

@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ums.invalid/contracts/v1/export-artifact.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["profileRevision", "readiness", "lifecycle", "fields", "generatedAt"],
+  "properties": {
+    "profileRevision": { "$ref": "common.json#/$defs/version" },
+    "readiness": { "$ref": "common.json#/$defs/readiness" },
+    "lifecycle": { "$ref": "common.json#/$defs/lifecycle" },
+    "fields": { "$ref": "common.json#/$defs/fields" },
+    "generatedAt": { "$ref": "common.json#/$defs/timestamp" }
+  }
+}

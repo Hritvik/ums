@@ -1,0 +1,11 @@
+{
+  "profileRevision": "3",
+  "readiness": "PROFILE_READY",
+  "lifecycle": "ACTIVE",
+  "fields": {
+    "displayName": "Ada",
+    "displayLocale": "en",
+    "displayTimezone": "UTC"
+  },
+  "generatedAt": "2026-11-01T10:00:00Z"
+}
