@@ -49,8 +49,9 @@ class SecurityConfiguration {
         IamCallerResolver(environment.getRequiredProperty("ums.security.issuer"), registrations)
 
     @Bean
-    fun callerAuthorityInterceptor(resolver: IamCallerResolver, mapper: ObjectMapper): CallerAuthorityInterceptor =
-        CallerAuthorityInterceptor(resolver, mapper)
+    fun callerAuthorityInterceptor(resolver: IamCallerResolver, mapper: ObjectMapper,
+                                   failures: com.vik.ums.operations.AuthorizationFailures): CallerAuthorityInterceptor =
+        CallerAuthorityInterceptor(resolver, mapper, failures)
 
     @Bean
     fun profileScopeResolver(jdbc: JdbcTemplate, environment: Environment): ProfileScopeResolver =

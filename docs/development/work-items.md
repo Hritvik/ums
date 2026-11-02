@@ -448,7 +448,7 @@ Five provider inputs do not exist yet and are carried as named gaps rather than 
 
 **Summary.** Erasure, notices, retries, and sweeps all exist as code that somebody must call by hand. In a real deployment they need to run on their own and shout when they fall behind. This item adds the scheduling, the alerts, and the procedures an operator follows.
 
-**Status.** Planned — not started.
+**Status.** Green — implemented and verified; awaiting review.
 
 **Work to be done.**
 - Add worker modes that run the finalizers, notice scheduling, relay, sweeps, and backup checks on a defined cadence, with single-flight behavior so two workers do not duplicate work.

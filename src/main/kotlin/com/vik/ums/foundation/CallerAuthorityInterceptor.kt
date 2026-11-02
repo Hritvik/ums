@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper
 import com.vik.ums.iam.CallerContext
 import com.vik.ums.iam.CallerDeniedException
 import com.vik.ums.iam.IamCallerResolver
+import com.vik.ums.operations.AuthorizationFailures
 import jakarta.servlet.http.HttpServletRequest
 import jakarta.servlet.http.HttpServletResponse
 import org.springframework.security.core.context.SecurityContextHolder
@@ -17,12 +18,14 @@ import org.springframework.web.servlet.HandlerInterceptor
 class CallerAuthorityInterceptor(
     private val resolver: IamCallerResolver,
     private val mapper: ObjectMapper,
+    private val failures: AuthorizationFailures = AuthorizationFailures(),
 ) : HandlerInterceptor {
     override fun preHandle(request: HttpServletRequest, response: HttpServletResponse, handler: Any): Boolean {
         val authentication = SecurityContextHolder.getContext().authentication as? JwtAuthenticationToken
         val caller = try {
             authentication?.let { resolver.resolve(it.token) }
         } catch (denied: CallerDeniedException) {
+            failures.record()
             null
         }
         if (caller == null) {

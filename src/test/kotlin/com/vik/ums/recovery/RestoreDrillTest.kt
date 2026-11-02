@@ -126,7 +126,7 @@ class RestoreDrillTest {
             mapper.writeValueAsString(record))
 
         assertThat(fencesAfter).isEqualTo(fencesBefore + 1)
-        assertThat(migration).isEqualTo("22")
+        assertThat(migration).isEqualTo("23")
         assertThat(checkpoints).isEqualTo(1)
         assertThat(backupAge).isLessThan(Duration.ofMinutes(5))
         assertThat(elapsed).isLessThan(Duration.ofMinutes(2))

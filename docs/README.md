@@ -14,6 +14,8 @@ identity/authentication; products retain their business data and permissions.
 - [Local erasure finalization](development/profile-erasure.md): Slice D2 deadline processing, replay fences, and local-completion limits.
 - [App-only deletion](development/profile-deletion.md): Slice D1 requests, cancellation, restricted status, and remaining privacy gates.
 - [Closure and retention](development/profile-closure.md): Slice D4–D5 app departure, the published 90-day deadline, and deliberate reactivation.
+- [Runbooks](operations/runbooks.md): alert thresholds and the operator procedures.
+- [Operating tier](operations/operating-tier.md): what runs on its own and what is not promised.
 - [Restore recovery](development/recovery.md): Slice F3 erasure journal, reconciliation, and backup signals.
 - [Restore drill](development/restore-drill.md): recorded drill and the operator runbook.
 - [Retention sweeps](development/retention.md): Slice F2 declared lifetimes, bounded batches, and fence preservation.
