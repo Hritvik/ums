@@ -53,16 +53,20 @@ class OutboxRelay(
             try {
                 transport.publish(event.event)
             } catch (refused: OutboxTransportException) {
-                if (recordFailure(event, refused.failureClass) == FailureOutcome.QUARANTINED) quarantined++ else failed++
+                when (recordFailure(event, refused.failureClass)) {
+                    FailureOutcome.QUARANTINED -> quarantined++
+                    FailureOutcome.REQUEUED -> failed++
+                    FailureOutcome.CLAIM_LOST -> Unit
+                }
                 continue
             } catch (unexpected: Exception) {
                 // Unknown transport failures are retried, and only a safe class or the exception
                 // type name ever leaves this method: never the payload or a message.
                 log.warn("Outbox event {} failed with {}", event.event.eventId, unexpected.javaClass.simpleName)
-                if (recordFailure(event, OutboxFailureClass.TRANSPORT_UNAVAILABLE) == FailureOutcome.QUARANTINED) {
-                    quarantined++
-                } else {
-                    failed++
+                when (recordFailure(event, OutboxFailureClass.TRANSPORT_UNAVAILABLE)) {
+                    FailureOutcome.QUARANTINED -> quarantined++
+                    FailureOutcome.REQUEUED -> failed++
+                    FailureOutcome.CLAIM_LOST -> Unit
                 }
                 continue
             }
@@ -78,7 +82,7 @@ class OutboxRelay(
     private fun claim(): List<ClaimedEvent> {
         val now = clock.instant()
         val rows = jdbc.query("""select o.event_id, o.application_id, o.stream_id, o.stream_revision,
-                o.event_type, o.payload::text
+                o.event_type, o.payload::text, o.claims
             from ums_event_outbox o
             where o.published_at is null and o.quarantined_at is null and o.next_attempt_at <= ?
               and not exists (select 1 from ums_event_outbox earlier
@@ -92,13 +96,23 @@ class OutboxRelay(
             { rs: ResultSet, _: Int -> event(rs) },
             Timestamp.from(now), batchSize)
         val leaseUntil = Timestamp.from(now.plus(lease))
-        rows.forEach { claimed ->
+        val claimed = mutableListOf<ClaimedEvent>()
+        rows.forEach { candidate ->
+            if (candidate.claims >= maxAttempts) {
+                // The row keeps coming back without ever recording a failure: a relay instance is
+                // dying mid-pass. Bound that loop instead of retrying it forever.
+                jdbc.update("""update ums_event_outbox set quarantined_at = ?, failure_class = ?,
+                    claim_token = null where event_id = ?""",
+                    Timestamp.from(now), OutboxFailureClass.RELAY_INTERRUPTED.name, candidate.event.eventId)
+                return@forEach
+            }
             val token = UUID.randomUUID()
-            jdbc.update("""update ums_event_outbox set claim_token = ?, next_attempt_at = ?
-                where event_id = ?""", token, leaseUntil, claimed.event.eventId)
-            claimed.token = token
+            jdbc.update("""update ums_event_outbox set claim_token = ?, next_attempt_at = ?,
+                claims = claims + 1 where event_id = ?""", token, leaseUntil, candidate.event.eventId)
+            candidate.token = token
+            claimed += candidate
         }
-        return rows
+        return claimed
     }
 
     /** True only when this claim still owns the row; a stale claim cannot mark it published. */
@@ -140,7 +154,8 @@ class OutboxRelay(
         val counts = jdbc.queryForObject("""select
                 count(*) filter (where published_at is null and quarantined_at is null),
                 min(occurred_at) filter (where published_at is null and quarantined_at is null),
-                count(*) filter (where published_at is null and quarantined_at is null and attempts > 0),
+                count(*) filter (where published_at is null and quarantined_at is null
+                    and (attempts > 0 or claims > 1)),
                 count(*) filter (where quarantined_at is not null),
                 min(quarantined_at) filter (where quarantined_at is not null)
             from ums_event_outbox""",
@@ -180,12 +195,13 @@ class OutboxRelay(
      */
     fun requeue(eventId: UUID): Boolean =
         jdbc.update("""update ums_event_outbox set quarantined_at = null, failure_class = null,
-            attempts = 0, claim_token = null, next_attempt_at = ?
+            attempts = 0, claims = 0, claim_token = null, next_attempt_at = ?
             where event_id = ? and quarantined_at is not null""",
             Timestamp.from(clock.instant()), eventId) == 1
 
     private fun event(rs: ResultSet): ClaimedEvent = ClaimedEvent(
-        OutboxEvent(
+        claims = rs.getInt(7),
+        event = OutboxEvent(
             eventId = rs.getObject(1, UUID::class.java),
             applicationId = rs.getString(2),
             streamId = rs.getString(3),
@@ -203,7 +219,7 @@ class OutboxRelay(
         val oldestQuarantine: Instant?,
     )
 
-    private class ClaimedEvent(val event: OutboxEvent) { lateinit var token: UUID }
+    private class ClaimedEvent(val event: OutboxEvent, val claims: Int) { lateinit var token: UUID }
 
     private enum class FailureOutcome { REQUEUED, QUARANTINED, CLAIM_LOST }
 

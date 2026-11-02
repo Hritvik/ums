@@ -14,7 +14,7 @@ data class OutboxEvent(
 )
 
 /** Safe failure classes only: no exception text or payload value ever leaves the service. */
-enum class OutboxFailureClass { TRANSPORT_UNAVAILABLE, TRANSPORT_REJECTED }
+enum class OutboxFailureClass { TRANSPORT_UNAVAILABLE, TRANSPORT_REJECTED, RELAY_INTERRUPTED }
 
 /** The transport accepted or refused one fact. Any throw is classified by the relay. */
 fun interface OutboxTransport {

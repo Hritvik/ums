@@ -3,7 +3,6 @@
 alter table ums_event_outbox
     add column attempts integer not null default 0 check (attempts >= 0),
     add column next_attempt_at timestamptz not null default current_timestamp,
-    add column claim_token uuid,
     add column quarantined_at timestamptz,
     add column failure_class varchar(64),
     add constraint ums_event_outbox_quarantine_complete
@@ -16,6 +15,3 @@ create index ums_event_outbox_due
 create index ums_event_outbox_quarantine
     on ums_event_outbox (quarantined_at)
     where quarantined_at is not null;
-
--- The due index replaces the unpublished scan; nothing reads this one any more.
-drop index if exists ums_event_outbox_unpublished;

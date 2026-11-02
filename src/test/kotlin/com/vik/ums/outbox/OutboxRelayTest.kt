@@ -28,6 +28,7 @@ class OutboxRelayTest {
     private lateinit var jdbc: JdbcTemplate
     private lateinit var transactions: TransactionTemplate
     private lateinit var transport: RecordingTransport
+    private var signals: OutboxSignals? = null
 
     @BeforeEach fun setup() {
         val ds = DriverManagerDataSource(postgres.jdbcUrl, postgres.username, postgres.password)
@@ -233,13 +234,45 @@ class OutboxRelayTest {
         val relay = relay(maxAttempts = 1)
         relay.relayOnce()
 
+        signals = OutboxSignals(relay, clock)
         val registry = io.micrometer.core.instrument.simple.SimpleMeterRegistry()
-        OutboxRelayConfiguration().outboxRelayMetrics(OutboxSignals(relay, clock)).bindTo(registry)
+        OutboxRelayConfiguration().outboxRelayMetrics(signals!!).bindTo(registry)
 
         assertThat(registry.get("ums.outbox.quarantined").gauge().value()).isEqualTo(1.0)
         assertThat(registry.get("ums.outbox.blocked.streams").gauge().value()).isEqualTo(1.0)
         assertThat(registry.get("ums.outbox.unpublished").gauge().value()).isEqualTo(0.0)
         assertThat(registry.get("ums.outbox.oldest.quarantine.seconds").gauge().value()).isGreaterThanOrEqualTo(0.0)
+    }
+
+    @Test fun `a relay that keeps dying is quarantined instead of retried forever`() {
+        val event = emit("s1", 1)
+        val crashing = object : OutboxTransport {
+            override fun publish(event: OutboxEvent) = throw AssertionError("crash before publish")
+        }
+        val relay = OutboxRelay(jdbc, transactions, crashing, clock, maxAttempts = 2)
+        repeat(2) {
+            assertThatThrownBy { relay.relayOnce() }.isInstanceOf(AssertionError::class.java)
+            clock.advance(Duration.ofMinutes(3))
+        }
+
+        assertThat(relay.relayOnce()).isEqualTo(RelayPass(0, 0, 0))
+        assertThat(jdbc.queryForObject("select failure_class from ums_event_outbox where event_id = ?",
+            String::class.java, event)).isEqualTo("RELAY_INTERRUPTED")
+        assertThat(publishedAt(event)).isNull()
+        assertThat(relay.status().quarantinedCount).isEqualTo(1)
+    }
+
+    @Test fun `signal snapshots are reused for one window and survive a failed refresh`() {
+        emit("s1", 1)
+        val relay = relay()
+        signals = OutboxSignals(relay, clock)
+
+        assertThat(signals!!.current()?.unpublishedCount).isEqualTo(1)
+        relay.relayOnce()
+        assertThat(signals!!.current()?.unpublishedCount).isEqualTo(1)
+
+        clock.advance(Duration.ofSeconds(6))
+        assertThat(signals!!.current()?.unpublishedCount).isZero()
     }
 
     private class RecordingTransport : OutboxTransport {

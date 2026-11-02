@@ -24,8 +24,10 @@ a visible quarantine, and operator signals.
 - A failed head keeps its place and retries with exponential backoff (30 seconds doubling to one
   hour by default). Other bindings are independent and keep flowing.
 - Only genuine delivery failures count as attempts, so a crash loop does not spend the retry
-  budget of a fact that was never refused. After the configured number of failures the row is
-  quarantined with a safe failure class (`TRANSPORT_UNAVAILABLE` or `TRANSPORT_REJECTED`). The
+  budget of a fact that was never refused. A fact claimed the configured number of times without
+  ever recording a failure is quarantined as `RELAY_INTERRUPTED`, so a pass that keeps dying is
+  bounded rather than retried forever. After the configured number of failures the row is
+  quarantined with `TRANSPORT_UNAVAILABLE` or `TRANSPORT_REJECTED`. The
   quarantined head holds its own `(application, stream)` — later revisions of that binding are not
   published out of order — while every other stream continues. Nothing is discarded.
 
@@ -58,7 +60,7 @@ startup rather than accumulating retries.
 | `ums.outbox.relay.max-attempts` | `8` | attempts before quarantine |
 | `ums.outbox.relay.backoff-base` | `PT30S` | first retry delay, doubled per attempt |
 | `ums.outbox.relay.backoff-max` | `PT1H` | backoff ceiling |
-| `ums.outbox.relay.lease` | `PT2M` | claim lease before a crashed pass can retry; must exceed the timeout |
+| `ums.outbox.relay.lease` | `PT2M` | claim lease before a crashed pass can retry; must exceed batch size × timeout |
 | `ums.outbox.relay.timeout-seconds` | `5` | HTTP request timeout |
 
 ## Operator signals
@@ -67,14 +69,15 @@ startup rather than accumulating retries.
 quarantined count, oldest quarantine age, and the number of `(application, stream)` pairs whose
 head is quarantined. Ages are clamped at zero so a database clock slightly ahead of the
 application clock cannot produce a negative gauge. Those six values are registered as
-`ums.outbox.*` gauges through one cached snapshot per five-second window, and a database error
-during a scrape serves the previous snapshot instead of failing the exposition. No event payload,
+`ums.outbox.*` gauges through one cached snapshot per five-second window. A database error
+during a scrape serves the previous snapshot, and before the first snapshot the gauges report
+`NaN` (unknown) rather than zero, so a cold database failure cannot read as an all-clear. No event payload,
 subject, reference, or token is ever a label or a value.
 
 ## Repair
 
-`OutboxRelay.requeue(eventId)` clears quarantine, resets attempts, and leaves the event id and
-payload untouched. The startup path is a one-shot property, so an operator can re-drive a given
+`OutboxRelay.requeue(eventId)` clears quarantine, resets the failure and claim counters, and
+leaves the event id and payload untouched. The startup path is a one-shot property, so an operator can re-drive a given
 fact without a code change or an internal HTTP surface:
 
 ```

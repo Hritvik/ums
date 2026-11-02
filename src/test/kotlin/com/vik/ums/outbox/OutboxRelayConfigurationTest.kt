@@ -29,7 +29,7 @@ class OutboxRelayConfigurationTest {
             .withProperty("ums.outbox.repair.event-id", UUID.randomUUID().toString())
         val configuration = OutboxRelayConfiguration()
 
-        val http = configuration.outboxTransport(environment, Clock.systemUTC())
+        val http = configuration.outboxTransport(environment)
         assertThat(http).isInstanceOf(HttpOutboxTransport::class.java)
         val relay = configuration.outboxRelay(jdbc, transactions, http, Clock.systemUTC(), environment)
         assertThat(configuration.outboxRelayScheduler(relay)).isNotNull()
@@ -43,7 +43,7 @@ class OutboxRelayConfigurationTest {
         val configuration = OutboxRelayConfiguration()
 
         val relay = configuration.outboxRelay(jdbc, transactions,
-            configuration.outboxTransport(environment, Clock.systemUTC()), Clock.systemUTC(), environment)
+            configuration.outboxTransport(environment), Clock.systemUTC(), environment)
         assertThat(relay).isNotNull()
 
         val invalid = MockEnvironment()
@@ -57,9 +57,12 @@ class OutboxRelayConfigurationTest {
     @Test fun `enabling the relay without a consumer endpoint fails fast`() {
         val context = relayContext(mapOf("ums.outbox.relay.enabled" to "true"))
 
-        assertThatThrownBy { context.refresh() }
-            .hasMessageContaining("ums.outbox.consumer-uri")
-        context.close()
+        try {
+            assertThatThrownBy { context.refresh() }
+                .hasMessageContaining("ums.outbox.consumer-uri")
+        } finally {
+            context.close()
+        }
     }
 
     @Test fun `enabling the relay registers the delivery beans`() {
@@ -73,6 +76,26 @@ class OutboxRelayConfigurationTest {
         assertThat(context.getBean(OutboxRelayScheduler::class.java)).isNotNull()
         assertThat(context.getBean(OutboxSignals::class.java)).isNotNull()
         context.close()
+    }
+
+    @Test fun `a disabled relay registers no delivery beans`() {
+        val context = relayContext(mapOf("ums.outbox.relay.enabled" to "false"))
+        context.refresh()
+
+        assertThat(context.getBeanNamesForType(OutboxRelay::class.java)).isEmpty()
+        context.close()
+    }
+
+    @Test fun `a lease shorter than a full batch of timeouts is refused`() {
+        val environment = MockEnvironment()
+            .withProperty("ums.outbox.consumer-uri", "https://consumer.example.test/events")
+            .withProperty("ums.outbox.relay.lease", "PT1M")
+            .withProperty("ums.outbox.relay.timeout-seconds", "30")
+            .withProperty("ums.outbox.relay.batch-size", "10")
+
+        assertThatThrownBy {
+            OutboxRelayConfiguration().outboxRelay(jdbc, transactions, transport, Clock.systemUTC(), environment)
+        }.isInstanceOf(IllegalArgumentException::class.java)
     }
 
     @Test fun `a lease shorter than the transport timeout is refused`() {

@@ -26,7 +26,7 @@ import java.util.UUID
 @ConditionalOnProperty(name = ["ums.outbox.relay.enabled"], havingValue = "true")
 class OutboxRelayConfiguration {
     @Bean
-    fun outboxTransport(environment: Environment, clock: Clock): OutboxTransport =
+    fun outboxTransport(environment: Environment): OutboxTransport =
         HttpOutboxTransport(
             URI.create(environment.getRequiredProperty("ums.outbox.consumer-uri")),
             Duration.ofSeconds(environment.getProperty("ums.outbox.relay.timeout-seconds", "5").toLong()),
@@ -38,12 +38,15 @@ class OutboxRelayConfiguration {
                     clock: Clock, environment: Environment): OutboxRelay {
         val timeout = Duration.ofSeconds(environment.getProperty("ums.outbox.relay.timeout-seconds", "5").toLong())
         val lease = Duration.parse(environment.getProperty("ums.outbox.relay.lease", "PT2M"))
-        // A lease shorter than the transport timeout would let another instance re-claim a fact
-        // while its publish is still in flight.
-        require(lease > timeout) { "The relay lease must exceed the transport timeout" }
+        val batchSize = environment.getProperty("ums.outbox.relay.batch-size", "20").toInt()
+        // A pass can spend one timeout per claimed fact, so the lease must cover the whole batch;
+        // otherwise another instance can re-claim a fact while this pass is still publishing.
+        require(lease > timeout.multipliedBy(batchSize.toLong())) {
+            "The relay lease must exceed the transport timeout for a full batch"
+        }
         return OutboxRelay(
             jdbc, transactions, transport, clock,
-            batchSize = environment.getProperty("ums.outbox.relay.batch-size", "20").toInt(),
+            batchSize = batchSize,
             maxAttempts = environment.getProperty("ums.outbox.relay.max-attempts", "8").toInt(),
             backoffBase = Duration.parse(environment.getProperty("ums.outbox.relay.backoff-base", "PT30S")),
             backoffMax = Duration.parse(environment.getProperty("ums.outbox.relay.backoff-max", "PT1H")),
@@ -78,7 +81,9 @@ class OutboxRelayConfiguration {
 
     private fun gauge(name: String, signals: OutboxSignals, registry: io.micrometer.core.instrument.MeterRegistry,
                       value: (OutboxStatus) -> Double) {
-        Gauge.builder(name, signals) { value(it.current()) }.register(registry)
+        // No snapshot yet is unknown, not zero: NaN keeps a cold database error from reading as
+        // "nothing unpublished, nothing quarantined".
+        Gauge.builder(name, signals) { it.current()?.let(value) ?: Double.NaN }.register(registry)
     }
 }
 
@@ -94,18 +99,19 @@ class OutboxSignals(
     @Volatile private var snapshot: OutboxStatus? = null
     @Volatile private var takenAt: Instant = Instant.EPOCH
 
-    fun current(): OutboxStatus {
+    /** Null only when no snapshot has ever been taken; a failed refresh keeps the last one. */
+    fun current(): OutboxStatus? {
         val now = clock.instant()
         val cached = snapshot
         if (cached != null && Duration.between(takenAt, now) < window) return cached
-        val fresh = runCatching { relay.status() }.getOrElse { cached ?: EMPTY }
+        val fresh = try {
+            relay.status()
+        } catch (unavailable: Exception) {
+            return cached
+        }
         snapshot = fresh
         takenAt = now
         return fresh
-    }
-
-    private companion object {
-        val EMPTY = OutboxStatus(0, null, 0, 0, null, 0)
     }
 }
 
