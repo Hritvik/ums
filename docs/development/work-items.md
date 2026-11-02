@@ -391,7 +391,7 @@ Five provider inputs do not exist yet and are carried as named gaps rather than 
 
 **Summary.** Every record the service keeps has a stated lifetime, but nothing currently deletes anything on time. That turns a disclosed retention promise into indefinite storage. This item adds the sweeps and the safeguards that keep erasure evidence while removing everything else.
 
-**Status.** Planned — not started.
+**Status.** Green — implemented and verified; awaiting review.
 
 **Work to be done.**
 - Implement sweeps for the records with a declared lifetime: command receipts, published outbox and processed inbox payloads, export artifacts, and failed or partial exports.

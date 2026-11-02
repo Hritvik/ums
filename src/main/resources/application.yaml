@@ -29,6 +29,10 @@ management:
     health:
       show-details: never
 ums:
+  retention:
+    sweep:
+      enabled: ${UMS_RETENTION_SWEEP_ENABLED:true}
+      # interval, initial-delay and batch-size are documented in docs/development/retention.md.
   outbox:
     relay:
       enabled: ${UMS_OUTBOX_RELAY_ENABLED:false}
