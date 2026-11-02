@@ -80,7 +80,6 @@ An erasure report is the tombstone shape, with the live fields absent:
   }
 }
 ```
-```
 
 - `aggregate.type` is `UMS_PROFILE_BINDING`; `aggregate.id` is the **app subject** (`aps_…`), which
   is stable across generations, so a tombstone remains addressable even though the profile
