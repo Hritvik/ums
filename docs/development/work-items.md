@@ -480,7 +480,7 @@ acceptance; avatar attachment stays disabled until then.
 
 **Summary.** The design forbids cross-app access and personal data in the wrong places, but nobody has tried to break it. This item attacks the service on purpose and records what held and what did not. It also runs the dependency and secret checks a release needs.
 
-**Status.** Planned — not started.
+**Status.** In progress — claimed; the avatar-cross-scope attack is deferred behind W-11 and recorded in the evidence, while every other attack, scan, and limit is independent.
 
 **Work to be done.**
 - Attempt the documented attacks: foreign app, wrong subject, replayed token, stale security version, forged delegation, cross-app listing, hidden-target enumeration, and access after erasure.
