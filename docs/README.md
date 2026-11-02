@@ -16,6 +16,7 @@ identity/authentication; products retain their business data and permissions.
 - [Closure and retention](development/profile-closure.md): Slice D4–D5 app departure, the published 90-day deadline, and deliberate reactivation.
 - [Proposed contracts](contracts/proposed/association-report-v1.md): owner-acceptance proposals for the association report and the content attachment.
 - [Upgrade and rollback](operations/upgrade-and-rollback.md): the forward path, interrupted migrations, and rollback limits.
+- [Security boundaries](development/security.md): Slice G1 attack record, rate limits, and scanning.
 - [Runbooks](operations/runbooks.md): alert thresholds and the operator procedures.
 - [Operating tier](operations/operating-tier.md): what runs on its own and what is not promised.
 - [Restore recovery](development/recovery.md): Slice F3 erasure journal, reconciliation, and backup signals.

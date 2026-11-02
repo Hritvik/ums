@@ -537,6 +537,77 @@ class ProfileStatusHttpTest {
             .andExpect(status().isBadRequest)
     }
 
+    @Test fun `an erased profile is unavailable to reads edits and exports`() {
+        authenticate()
+        jdbc.update("""update ums_profile_bindings set lifecycle = 'ERASED', readiness = 'PROFILE_REQUIRED',
+            profile_reference = null, generation = null, profile_revision = null,
+            display_name = null, display_locale = null, display_timezone = null,
+            binding_revision = binding_revision + 1 where subject_reference = ?""", subjectReference)
+        jdbc.update("""insert into ums_profile_erasure_obligations
+            (fence_reference, issuer_environment_ref, app_reference, subject_reference, obligation_kind,
+             retired_profile_reference, retired_generation, obligation_at, erased_binding_revision, erased_at)
+            values (?, ?, ?, ?, 'APP_DELETION', ?, 1, now(), 2, now())""",
+            UUID.randomUUID(), issuerEnvironmentRef, appReference, subjectReference, UUID.randomUUID())
+        val revision = jdbc.queryForObject("select binding_revision from ums_profile_bindings where subject_reference = ?",
+            Long::class.java, subjectReference)
+
+        mockMvc.perform(get("/api/v1/profile")).andExpect(status().isNotFound)
+        // Status is the terminal fact the person is allowed to see; it carries no display values.
+        val statusBody = mockMvc.perform(get("/api/v1/profile/status"))
+            .andExpect(status().isOk)
+            .andReturn().response.contentAsString
+        assertThat(statusBody).doesNotContain("displayName", "displayLocale", "After Erasure")
+        mockMvc.perform(patch("/api/v1/profile").contentType(MediaType.APPLICATION_JSON)
+            .header("Idempotency-Key", uuid()).content(patchBody("After Erasure")))
+            .andExpect(status().isNotFound)
+        mockMvc.perform(post("/api/v1/profile/exports").header("Idempotency-Key", uuid()))
+            .andExpect(status().isNotFound)
+
+        assertThat(jdbc.queryForObject("select binding_revision from ums_profile_bindings where subject_reference = ?",
+            Long::class.java, subjectReference)).isEqualTo(revision)
+        assertThat(jdbc.queryForObject("select count(*) from ums_profile_exports", Int::class.java)).isZero()
+    }
+
+    @Test fun `a denied foreign-app request changes no state`() {
+        authenticate(appId = "other-app", clientId = "other-client")
+        val before = jdbc.queryForObject("select binding_revision from ums_profile_bindings where subject_reference = ?",
+            Long::class.java, subjectReference)
+
+        mockMvc.perform(patch("/api/v1/profile").contentType(MediaType.APPLICATION_JSON)
+            .header("Idempotency-Key", uuid()).content(patchBody("Foreign Attempt")))
+            .andExpect(status().isNotFound)
+
+        assertThat(jdbc.queryForObject("select binding_revision from ums_profile_bindings where subject_reference = ?",
+            Long::class.java, subjectReference)).isEqualTo(before)
+        assertThat(jdbc.queryForObject("select count(*) from ums_profile_patch_receipts", Int::class.java)).isZero()
+    }
+
+    @Test fun `stored facts and error bodies carry no display values or tokens`() {
+        authenticate()
+        val marker = "PII-MARKER-9f2c"
+        mockMvc.perform(patch("/api/v1/profile").contentType(MediaType.APPLICATION_JSON)
+            .header("Idempotency-Key", uuid()).content(patchBody(marker)))
+            .andExpect(status().isOk)
+        mockMvc.perform(get("/api/v1/profile/exports").param("operationReference", "not-a-uuid"))
+            .andExpect(status().isBadRequest)
+
+        val stored = listOf(
+            "ums_event_outbox" to "payload::text",
+            "ums_profile_patch_receipts" to "input_fingerprint",
+            "ums_profile_privacy_audit" to "correlation_id",
+            "ums_profile_privacy_receipts" to "input_fingerprint",
+            "ums_profile_export_receipts" to "input_fingerprint",
+        ).flatMap { (table, column) ->
+            jdbc.queryForList("select $column from $table", String::class.java)
+        }
+        assertThat(stored).isNotEmpty
+        stored.forEach { value ->
+            assertThat(value).doesNotContain(marker, "eyJ", "hid_", "aps_", "Bearer ")
+        }
+        assertThat(jdbc.queryForObject("select display_name from ums_profile_bindings",
+            String::class.java)).isEqualTo(marker)
+    }
+
     @Test fun `an unauthenticated request is refused before the handler`() {
         SecurityContextHolder.getContext().authentication =
             UsernamePasswordAuthenticationToken("anonymous", null, emptyList())

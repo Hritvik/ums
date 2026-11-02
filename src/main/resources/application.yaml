@@ -29,6 +29,12 @@ management:
     health:
       show-details: never
 ums:
+  rate-limit:
+    reads-per-minute: ${UMS_RATE_LIMIT_READS_PER_MINUTE:60}
+    writes-per-minute: ${UMS_RATE_LIMIT_WRITES_PER_MINUTE:20}
+    privacy-per-minute: ${UMS_RATE_LIMIT_PRIVACY_PER_MINUTE:10}
+    # With shared limit infrastructure degraded, the local window tightens to a fifth.
+    degraded: ${UMS_RATE_LIMIT_DEGRADED:false}
   maintenance:
     enabled: ${UMS_MAINTENANCE_ENABLED:true}
     # Limits are documented in docs/operations/operating-tier.md and thresholds in

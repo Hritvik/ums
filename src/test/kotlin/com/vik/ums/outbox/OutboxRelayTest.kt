@@ -46,9 +46,11 @@ class OutboxRelayTest {
     private fun emit(stream: String, revision: Long, at: Instant = clock.instant()): UUID {
         val id = UUID.randomUUID()
         jdbc.update("""insert into ums_event_outbox
-            (event_id, application_id, stream_id, stream_revision, event_type, payload, occurred_at)
-            values (?, 'app', ?, ?, 'ums.profile.state-changed.v1', ?::jsonb, ?)""",
-            id, stream, revision, """{"eventId":"$id","schemaVersion":"1","producer":"ums"}""", java.sql.Timestamp.from(at))
+            (event_id, application_id, stream_id, stream_revision, event_type, payload, occurred_at,
+             next_attempt_at)
+            values (?, 'app', ?, ?, 'ums.profile.state-changed.v1', ?::jsonb, ?, ?)""",
+            id, stream, revision, """{"eventId":"$id","schemaVersion":"1","producer":"ums"}""",
+            java.sql.Timestamp.from(at), java.sql.Timestamp.from(clock.instant()))
         return id
     }
 

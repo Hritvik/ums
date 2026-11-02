@@ -54,6 +54,14 @@ class SecurityConfiguration {
         CallerAuthorityInterceptor(resolver, mapper, failures)
 
     @Bean
+    fun rateLimitInterceptor(mapper: ObjectMapper, clock: java.time.Clock, environment: Environment): RateLimitInterceptor =
+        RateLimitInterceptor(mapper, clock,
+            readsPerMinute = environment.getProperty("ums.rate-limit.reads-per-minute", "60").toInt(),
+            writesPerMinute = environment.getProperty("ums.rate-limit.writes-per-minute", "20").toInt(),
+            privacyPerMinute = environment.getProperty("ums.rate-limit.privacy-per-minute", "10").toInt(),
+            degraded = environment.getProperty("ums.rate-limit.degraded", "false").toBoolean())
+
+    @Bean
     fun profileScopeResolver(jdbc: JdbcTemplate, environment: Environment): ProfileScopeResolver =
         ProfileScopeResolver(jdbc, UUID.fromString(environment.getRequiredProperty("ums.iam.issuer-environment-ref")))
 

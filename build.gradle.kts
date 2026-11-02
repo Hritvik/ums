@@ -44,6 +44,15 @@ dependencies {
 
 jacoco { toolVersion = "0.8.13" }
 
+// External dependency/secret audit. The in-build SecretScanTest runs always; the external
+// scanners are required in CI and optional locally.
+tasks.register<Exec>("securityAudit") {
+    commandLine("sh", "scripts/security-audit.sh")
+}
+if (System.getenv("CI") != null) {
+    tasks.named("check") { dependsOn("securityAudit") }
+}
+
 tasks.withType<Test>().configureEach {
     useJUnitPlatform()
     maxParallelForks = 1
