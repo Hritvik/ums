@@ -31,7 +31,7 @@ management:
 ums:
   maintenance:
     enabled: ${UMS_MAINTENANCE_ENABLED:true}
-    # interval, batch-limit, notice-limit, and alert thresholds are documented in
+    # Limits are documented in docs/operations/operating-tier.md and thresholds in
     # docs/operations/runbooks.md.
   # recovery:
   #   erasure-journal-path: /var/lib/ums/erasure-journal.jsonl   # required for privacy mode

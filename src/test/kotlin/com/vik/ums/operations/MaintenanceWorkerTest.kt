@@ -142,7 +142,7 @@ class MaintenanceWorkerTest {
 
     @Test fun `a disabled retention sweep is not reported as a failure`() {
         val disabled = OperationalAlerts(jdbc, clock, failures, RetentionSignals(), backup, exports, alertSignals,
-            retentionEnabled = false)
+            retentionEnabled = false, startedAt = clock.instant().minus(Duration.ofHours(3)))
 
         disabled.check()
 
@@ -246,6 +246,30 @@ class MaintenanceWorkerTest {
         assertThat(alertSignals.snapshot?.backupFailed).isFalse()
         assertThat(alertSignals.snapshot?.failedRetentionSweeps).isZero()
         assertThat(alertSignals.snapshot?.failedExportCleanup).isZero()
+    }
+
+    @Test fun `the per-app budget still reaches every application`() {
+        val otherApp = AppScope(UUID.randomUUID(), UUID.randomUUID())
+        val otherScope = ProfileScope(otherApp.issuerEnvironmentRef, otherApp.appReference, UUID.randomUUID())
+        ProfilePolicyRegistry(jdbc, transactions, mapper).register(
+            AppProfilePolicy(otherApp, true, 1, emptySet(), ProfileField.entries.toSet(), "l1", "t1"))
+        ProfileProvisioningService(jdbc, transactions, mapper, "test", clock)
+            .provision(TrustedOnboardingFact(otherScope, "iam", UUID.randomUUID(), "entry", 1, "worker"))
+        requestDeletion()
+        deletion.request(TrustedPrivacyAuthority(otherScope, UUID.randomUUID(), PrivacyPurpose.REQUEST_DELETION,
+            clock.instant(), true, clock.instant().plus(Duration.ofMinutes(5))),
+            DeletionRequestCommand(UUID.randomUUID(), 1, "worker"))
+        clock.advance(Duration.ofDays(30))
+        val budgeted = MaintenanceWorker(jdbc, lease, DueDeletionBatchService(jdbc,
+            ProfileFinalizationService(jdbc, transactions, mapper, "test", clock), clock),
+            ProfileNoticeService(jdbc, transactions, mapper, "test", clock), clock,
+            batchLimit = 1, maxPages = 5, noticeLimit = 10, maxFinalizations = 1)
+
+        val result = budgeted.run()
+
+        assertThat(result.finalized).isEqualTo(2)
+        assertThat(jdbc.queryForObject("select count(*) from ums_profile_bindings where lifecycle = 'ERASED'",
+            Int::class.java)).isEqualTo(2)
     }
 
     @Test fun `a content-blocked app is reported blocked without stopping the pass`() {

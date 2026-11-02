@@ -14,7 +14,7 @@ gauge, or page.
 | `ums.alert.ingestion.quarantine.open` | open ingestion quarantine | any |
 | `ums.alert.failed.retention` | failed deletes, or the sweep has not completed | any after a 2-hour startup grace |
 | `ums.alert.backup.failed` | failed, stale, or unconfigured backup | any |
-| `ums.alert.export.cleanup.failed` | the last export cleanup pass failed | any |
+| `ums.alert.export.cleanup.failed` | the last cleanup failed or has never run | any after a 2-minute grace |
 | `ums.alert.authorization.new` | caller denials | 5 since the previous check |
 | `ums.alert.authorization.failures` | cumulative caller denials | trend only |
 | `ums.outbox.*`, `ums.retention.*`, `ums.backup.*` | delivery, sweep, backup state | see each doc |

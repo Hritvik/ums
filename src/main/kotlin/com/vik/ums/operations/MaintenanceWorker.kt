@@ -47,7 +47,9 @@ class MaintenanceWorker(
         val holder = lease.tryAcquire(WORKER, Duration.ofMinutes(10)) ?: return MaintenanceResult(skipped = true)
         return try {
             val finalized = finalizeDue(holder)
-            val scheduled = scheduleNotices()
+            val leaseStillHeld = lease.renew(WORKER, holder, Duration.ofMinutes(10))
+            val scheduled = if (leaseStillHeld) scheduleNotices() else 0
+            if (!leaseStillHeld) log.warn("Maintenance worker lost its lease; notices deferred to the next pass")
             MaintenanceResult(false, finalized.first, finalized.second, finalized.third, scheduled)
         } finally {
             runCatching { lease.release(WORKER, holder) }
@@ -61,28 +63,35 @@ class MaintenanceWorker(
         val apps = applications()
         val cursors = mutableMapOf<AppScope, DeletionBatchCursor?>()
         val pages = mutableMapOf<AppScope, Int>()
+        val finalizedByApp = mutableMapOf<AppScope, Int>()
         var leaseHeld = true
-        // Round-robin one page per application, so a permanently blocked app cannot consume the
-        // whole pass while others wait.
-        while (leaseHeld && apps.any { (pages[it] ?: 0) < maxPages } && finalized < maxFinalizations) {
+        // One page per application per round. The finalization budget is per application, so a
+        // backlog (or a permanently blocked one) cannot keep the others out of a pass.
+        while (leaseHeld && apps.any { (pages[it] ?: 0) < maxPages }) {
             var progressed = false
             for (app in apps) {
                 if ((pages[app] ?: 0) >= maxPages) continue
+                if ((finalizedByApp[app] ?: 0) >= maxFinalizations) {
+                    pages[app] = maxPages
+                    continue
+                }
                 val result = batches.run(
                     TrustedMaintenanceAuthority(app, UUID.randomUUID(), MaintenancePurpose.FINALIZE_APP_DELETION),
                     batchLimit, cursors[app], "maintenance-worker")
+                var completed = 0
                 result.results.forEach {
                     when (it.outcome) {
-                        com.vik.ums.privacy.DeletionBatchOutcome.LOCAL_COMPLETED -> finalized++
+                        com.vik.ums.privacy.DeletionBatchOutcome.LOCAL_COMPLETED -> completed++
                         com.vik.ums.privacy.DeletionBatchOutcome.BLOCKED -> blocked++
                         com.vik.ums.privacy.DeletionBatchOutcome.RETRYABLE -> retryable++
                     }
                 }
+                finalized += completed
+                finalizedByApp[app] = (finalizedByApp[app] ?: 0) + completed
                 pages[app] = (pages[app] ?: 0) + 1
                 cursors[app] = result.nextCursor
                 if (result.nextCursor == null) pages[app] = maxPages
                 progressed = true
-                if (finalized >= maxFinalizations) break
                 leaseHeld = lease.renew(WORKER, holder, Duration.ofMinutes(10))
                 if (!leaseHeld) break
             }
