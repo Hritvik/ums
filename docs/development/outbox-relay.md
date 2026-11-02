@@ -20,9 +20,10 @@ a visible quarantine, and operator signals.
 - A fact is marked published only after the transport accepts the envelope. A crash between
   publish and mark replays the same event id, and the lease holds the retry back first. Nothing
   is marked published early, so no fact is lost.
-- A failure of the local mark write is not a transport failure: it is logged, never consumes the
-  retry budget, never quarantines a fact the consumer already accepted, and never aborts the rest
-  of the batch. The row stays unpublished and is replayed after its lease.
+- A failure of the local mark write is not a transport failure: it is logged, does not consume
+  the delivery-attempt budget, and never aborts the rest of the batch. The row stays unpublished
+  and is replayed after its lease; a mark that keeps failing exhausts the interruption budget and
+  is quarantined as `RELAY_INTERRUPTED` rather than blamed on the transport.
 - A failed head keeps its place and retries with exponential backoff (30 seconds doubling to one
   hour by default). Other bindings are independent and keep flowing.
 - Only genuine delivery failures count as delivery attempts. Separately, a fact is counted as

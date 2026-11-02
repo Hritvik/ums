@@ -26,7 +26,7 @@ class OutboxRelay(
     private val maxAttempts: Int = 8,
     private val backoffBase: Duration = Duration.ofSeconds(30),
     private val backoffMax: Duration = Duration.ofHours(1),
-    private val lease: Duration = Duration.ofMinutes(2),
+    private val lease: Duration = Duration.ofMinutes(5),
 ) {
     init {
         require(batchSize > 0) { "Batch size must be positive" }
@@ -50,7 +50,16 @@ class OutboxRelay(
         var failed = 0
         var quarantined = 0
         for (event in claimed) {
-            when (startAttempt(event)) {
+            val start = try {
+                startAttempt(event)
+            } catch (unavailable: Exception) {
+                // The local database is unavailable; the lease holds the rest of the batch for a
+                // later pass instead of aborting the whole run.
+                log.warn("Outbox event {} could not start ({})",
+                    event.event.eventId, unavailable.javaClass.simpleName)
+                AttemptStart.LOST
+            }
+            when (start) {
                 AttemptStart.QUARANTINED -> { quarantined++; continue }
                 AttemptStart.LOST -> continue
                 AttemptStart.STARTED -> Unit

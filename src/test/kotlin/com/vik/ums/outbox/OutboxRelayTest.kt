@@ -108,6 +108,8 @@ class OutboxRelayTest {
         assertThat(publishedAt(later)).isNull()
         assertThat(jdbc.queryForObject("select quarantined_at is not null from ums_event_outbox where event_id = ?",
             Boolean::class.java, stuck)).isTrue()
+        assertThat(jdbc.queryForObject("select failure_class from ums_event_outbox where event_id = ?",
+            String::class.java, stuck)).isEqualTo("TRANSPORT_REJECTED")
 
         // A stream that only becomes due after the quarantine still flows on the next pass.
         emit("s3", 1)
@@ -145,7 +147,7 @@ class OutboxRelayTest {
         // The claim lease holds the fact back instead of retrying it immediately.
         assertThat(relay().relayOnce()).isEqualTo(RelayPass(0, 0, 0))
 
-        clock.advance(Duration.ofMinutes(3))
+        clock.advance(Duration.ofMinutes(6))
         assertThat(relay().relayOnce()).isEqualTo(RelayPass(1, 0, 0))
         assertThat(transport.published).containsExactly(event, event)
         assertThat(publishedAt(event)).isNotNull()
@@ -244,6 +246,19 @@ class OutboxRelayTest {
         assertThat(registry.get("ums.outbox.oldest.quarantine.seconds").gauge().value()).isGreaterThanOrEqualTo(0.0)
     }
 
+    @Test fun `a crash on one head does not spend another stream's attempt`() {
+        emit("s1", 1, clock.instant())
+        emit("s2", 1, clock.instant().plusMillis(1))
+        transport.crashOnce = true
+        val relay = relay(maxAttempts = 3)
+
+        assertThatThrownBy { relay.relayOnce() }.isInstanceOf(AssertionError::class.java)
+
+        val claims = jdbc.query("select stream_id, claims from ums_event_outbox order by stream_id",
+            { rs, _ -> rs.getString(1) to rs.getInt(2) }).toMap()
+        assertThat(claims).containsEntry("s1", 1).containsEntry("s2", 0)
+    }
+
     @Test fun `a relay that keeps dying is quarantined instead of retried forever`() {
         val event = emit("s1", 1)
         val crashing = object : OutboxTransport {
@@ -252,7 +267,7 @@ class OutboxRelayTest {
         val relay = OutboxRelay(jdbc, transactions, crashing, clock, maxAttempts = 2)
         repeat(2) {
             assertThatThrownBy { relay.relayOnce() }.isInstanceOf(AssertionError::class.java)
-            clock.advance(Duration.ofMinutes(3))
+            clock.advance(Duration.ofMinutes(6))
         }
 
         assertThat(relay.relayOnce()).isEqualTo(RelayPass(0, 0, 1))
@@ -304,8 +319,13 @@ class OutboxRelayTest {
         val published = mutableListOf<UUID>()
         val failures = mutableListOf<OutboxFailureClass>()
         val failingStreams = mutableSetOf<String>()
+        var crashOnce = false
 
         override fun publish(event: OutboxEvent) {
+            if (crashOnce) {
+                crashOnce = false
+                throw AssertionError("crash while publishing")
+            }
             if (event.streamId in failingStreams) {
                 throw OutboxTransportException(OutboxFailureClass.TRANSPORT_REJECTED)
             }

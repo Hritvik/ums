@@ -43,7 +43,7 @@ class OutboxRelayConfiguration {
         // lease must cover a full batch twice over; otherwise another instance can re-claim a
         // fact while this pass is still publishing.
         require(lease > timeout.multipliedBy(batchSize.toLong() * 2)) {
-            "The relay lease must exceed the transport timeout for a full batch"
+            "The relay lease must exceed 2 x batch size x transport timeout"
         }
         return OutboxRelay(
             jdbc, transactions, transport, clock,

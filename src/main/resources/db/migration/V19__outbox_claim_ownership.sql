@@ -8,5 +8,5 @@ alter table ums_event_outbox
     add column if not exists claim_token uuid,
     add column if not exists claims integer not null default 0 check (claims >= 0);
 
--- The due index replaces the unpublished scan; nothing reads this one any more.
+-- The due index created in V18 replaces the unpublished scan; nothing reads this one any more.
 drop index if exists ums_event_outbox_unpublished;
