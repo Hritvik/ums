@@ -84,6 +84,8 @@ class RestoreDrillTest {
             postgres.username, postgres.password)
         val restoredJdbc = JdbcTemplate(restored)
         val restoredTransactions = TransactionTemplate(DataSourceTransactionManager(restored))
+        // The upgrade rehearsal runs against the restored copy: forward migrate, then reconcile.
+        Flyway.configure().dataSource(restored).load().migrate()
 
         // The restored copy carries the pre-deletion row and no journal feed: the evidence must
         // come from outside the backup.
@@ -108,6 +110,7 @@ class RestoreDrillTest {
             Int::class.java)!!
         val migration = restoredJdbc.queryForObject("select max(version::int) from flyway_schema_history",
             String::class.java)!!
+        assertThat(Flyway.configure().dataSource(restored).load().info().pending()).isEmpty()
         val checkpoints = restoredJdbc.queryForObject("select count(*) from ums_input_checkpoints", Int::class.java)!!
         val backupAge = Duration.between(backupTakenAt, restoreStarted)
         val record = mapOf(

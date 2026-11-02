@@ -505,7 +505,7 @@ Five provider inputs do not exist yet and are carried as named gaps rather than 
 
 **Summary.** The service will be upgraded while it holds real data, and a bad upgrade must not lose or resurrect anything. This item proves the migrations work forward from every earlier state and records what a rollback cannot do.
 
-**Status.** Planned — not started.
+**Status.** Green — implemented and verified; awaiting review.
 
 **Work to be done.**
 - Test a forward migration from each previously shipped schema state to the current one, including from a database that carries erased profiles and open deletion requests.
