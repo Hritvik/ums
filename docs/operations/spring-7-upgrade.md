@@ -8,29 +8,42 @@ Status: **not started** — tracked follow-up to the two accepted `spring-webmvc
 `GHSA-pc63-qcmh-9cmg`). Their fix exists only in Spring Framework 7.0.9, which ships with Spring
 Boot 4. No 6.2.x fix exists, so the only remediation is this upgrade.
 
-## What the attempt showed
+## What the attempts showed
 
-A first pass (Boot `4.0.9`) is not a drop-in:
+Two isolated spikes (both reverted) reached a compiling application on Boot 4.0.9 / Spring 7:
 
-- Boot 4 requires Gradle 8.14 or later; the repository wrapper is 8.13 and must be raised first.
-- Boot 4 resolves Jackson 3 (`tools.jackson`) by default. The application imports
-  `com.fasterxml.jackson.databind` throughout, and the `jackson-bom.version` override becomes a
-  `tools.jackson:jackson-bom` resolution and fails.
-- Spring Security 7 changes the resource-server and `HttpSecurity` surface used by
-  `SecurityConfiguration`.
-- The Spring dependency-management plugin should be dropped in favour of the Boot 4 BOM.
+- The Gradle wrapper must be raised to 8.14.3 (with its official checksum) before the Boot 4
+  plugin will apply.
+- Removing `io.spring.dependency-management` in favour of `platform(SpringBootPlugin.BOM_COORDINATES)`
+  is the right shape, but then every unversioned test dependency (Testcontainers) needs an
+  explicit version; Boot 4 no longer manages the 1.x coordinates.
+- Boot 4 splits auto-configuration: the Flyway bean does not appear until
+  `spring-boot-starter-flyway` is added.
+- Boot 4 auto-configures a Jackson 3 `ObjectMapper`. The application's Jackson 2 services still
+  compile, but they need their own mapper bean, named so it does not collide with Boot's
+  `objectMapper`; HTTP serialization then runs on Jackson 3.
+- `TestRestTemplate` is gone; the full-context test must use a JDK `HttpClient` (or the new
+  `RestTestClient`).
+- The health endpoint now returns `{"groups":[...],"status":"UP"}`; assertions must not pin the
+  exact body.
+- Boot 4 brings JUnit 6 and Testcontainers 2. Testcontainers 1.21.4 fails with initialization
+  errors under JUnit 6, so the test stack must either be pinned to JUnit 5 or migrated to
+  Testcontainers 2 (artifact and API changes). This is the main open piece.
+- A deprecated MockMvc matcher (`isUnprocessableEntity`) must become `status().`is`(422)`.
 
-The attempt was reverted cleanly; the tree stays on Boot 3.5.16 until this work is scheduled.
+The spikes were discarded; `main` stays on Boot 3.5.16 with the two advisories documented as R-1.
 
 ## Planned steps
 
-1. Raise the Gradle wrapper to 8.14.x with the official checksum, verify `./gradlew check` on the
-   current Boot version.
-2. Upgrade Boot to the latest 4.0.x, remove the dependency-management plugin, rewrite the lockfile.
-3. Migrate Jackson imports to `tools.jackson` (annotations remain `com.fasterxml.jackson.annotation`),
-   or confirm a supported Jackson 2 mode and pin it if one exists.
-4. Adapt `SecurityConfiguration` and the OAuth2 resource-server setup to Spring Security 7.
-5. Run the full suite, the restore drill, the upgrade rehearsal, and `CI=true securityAudit` with
+1. Raise the Gradle wrapper to 8.14.3 with the official checksum and verify the current build.
+2. Upgrade Boot to the latest 4.0.x, replace the dependency-management plugin with the platform
+   BOM, add `spring-boot-starter-flyway`, and version the test dependencies explicitly.
+3. Provide a Jackson 2 mapper bean for the services (or migrate them to `tools.jackson`), and
+   confirm MVC serialization of the Kotlin response types.
+4. Decide the test stack: pin JUnit 5 or migrate Testcontainers to 2.x; replace `TestRestTemplate`
+   and the removed MockMvc matcher; un-pin the health body assertion.
+5. Adapt `SecurityConfiguration` and the OAuth2 resource-server setup to Spring Security 7.
+6. Run the full suite, the restore drill, the upgrade rehearsal, and `CI=true securityAudit` with
    the two `spring-webmvc` ignores removed from `osv-scanner.toml`.
 
 ## Evidence required to close R-1
