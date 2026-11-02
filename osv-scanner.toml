@@ -1,0 +1,38 @@
+# Accepted risks for advisories with no fix in the current line. Each must be revisited.
+[[IgnoredVulns]]
+id = "GHSA-j9f9-w8pj-32f8"
+reason = "spring-webmvc: fixed only in Spring Framework 7 / Boot 4; a major upgrade is tracked separately. Not reachable through the pinned routes without an untrusted template surface."
+
+[[IgnoredVulns]]
+id = "GHSA-pc63-qcmh-9cmg"
+reason = "spring-webmvc: same as GHSA-j9f9-w8pj-32f8; no 6.2.x fix exists."
+
+# Build-tool configurations only: the Kotlin compiler's own classpaths, never packaged in the
+# runtime artifact. The shipped application has no BouncyCastle or OpenTelemetry dependency.
+[[IgnoredVulns]]
+id = "GHSA-ccrj-gw8r-854m"
+reason = "opentelemetry-api only in the Kotlin swiftExport build configuration, not shipped."
+
+[[IgnoredVulns]]
+id = "GHSA-rcgg-9c38-7xpx"
+reason = "opentelemetry-api only in the Kotlin swiftExport build configuration, not shipped."
+
+[[IgnoredVulns]]
+id = "GHSA-cj8j-37rh-8475"
+reason = "bouncycastle only in the Kotlin compiler configuration, not shipped."
+
+[[IgnoredVulns]]
+id = "GHSA-wg6q-6289-32hp"
+reason = "bouncycastle only in the Kotlin compiler configuration, not shipped."
+
+[[IgnoredVulns]]
+id = "GHSA-9pwp-9qqc-pr26"
+reason = "bouncycastle only in the Kotlin compiler configuration, not shipped."
+
+[[IgnoredVulns]]
+id = "GHSA-c3fc-8qff-9hwx"
+reason = "bouncycastle only in the Kotlin compiler configuration, not shipped."
+
+[[IgnoredVulns]]
+id = "GHSA-qp49-qgx5-5m26"
+reason = "bouncycastle only in the Kotlin compiler configuration, not shipped."

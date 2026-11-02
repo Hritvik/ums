@@ -13,7 +13,7 @@ else
 fi
 
 if command -v osv-scanner >/dev/null 2>&1; then
-    osv-scanner --lockfile=gradle.lockfile || fail=1
+    osv-scanner --lockfile=gradle.lockfile --config=osv-scanner.toml || fail=1
 else
     echo "security-audit: osv-scanner not installed" >&2
     [ "${CI:-}" = "true" ] && fail=1
