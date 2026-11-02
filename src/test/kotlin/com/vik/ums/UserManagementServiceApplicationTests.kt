@@ -30,7 +30,8 @@ import java.util.UUID
 import javax.sql.DataSource
 
 @Testcontainers
-@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
+@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
+    properties = ["ums.retention.sweep.enabled=false", "ums.privacy.export-sweep.enabled=false"])
 @Import(UserManagementServiceApplicationTests.TestAuthority::class)
 class UserManagementServiceApplicationTests {
     @Autowired lateinit var http: TestRestTemplate
@@ -96,7 +97,7 @@ class UserManagementServiceApplicationTests {
 
     @Test
     fun `empty PostgreSQL database migrates and migration is repeatable`() {
-        assertThat(flyway.info().applied().map { it.version.toString() }).containsExactly("1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19")
+        assertThat(flyway.info().applied().map { it.version.toString() }).containsExactly("1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "20")
         assertThat(flyway.migrate().migrationsExecuted).isZero()
         assertThat(jdbc.queryForObject("select count(*) from ums_event_inbox", Long::class.java)).isNotNull()
     }

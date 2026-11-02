@@ -98,6 +98,38 @@ class RetentionSweeperTest {
             java.sql.Timestamp.from(occurredAt), UUID.randomUUID())
     }
 
+    private fun audit(occurredAt: Instant) {
+        val binding = Triple(app.issuer, app.app, UUID.randomUUID())
+        jdbc.update("""insert into ums_profile_policies (issuer_environment_ref, app_reference, policy)
+            values (?, ?, '{}'::jsonb) on conflict do nothing""", binding.first, binding.second)
+        jdbc.update("""insert into ums_profile_bindings
+            (issuer_environment_ref, app_reference, subject_reference, profile_reference,
+             binding_revision, policy_revision, generation, profile_revision, lifecycle, readiness)
+            values (?, ?, ?, ?, 1, 1, 1, 1, 'ACTIVE', 'PROFILE_READY') on conflict do nothing""",
+            binding.first, binding.second, binding.third, UUID.randomUUID())
+        val request = UUID.randomUUID()
+        jdbc.update("""insert into ums_profile_deletion_requests
+            (request_reference, issuer_environment_ref, app_reference, subject_reference,
+             profile_reference, generation, operation_revision, status, accepted_at, deadline)
+            values (?, ?, ?, ?, ?, 1, 1, 'PENDING', ?, ?)""",
+            request, binding.first, binding.second, binding.third, UUID.randomUUID(),
+            java.sql.Timestamp.from(occurredAt), java.sql.Timestamp.from(occurredAt.plus(Duration.ofDays(30))))
+        jdbc.update("""insert into ums_profile_privacy_audit
+            (audit_reference, operation_reference, actor_reference, action, binding_revision,
+             occurred_at, correlation_id)
+            values (?, ?, ?, 'REQUEST_DELETION', 1, ?, 'retention')""",
+            UUID.randomUUID(), request, UUID.randomUUID(), java.sql.Timestamp.from(occurredAt))
+    }
+
+    private fun erasureObligation() {
+        jdbc.update("""insert into ums_profile_erasure_obligations
+            (fence_reference, issuer_environment_ref, app_reference, subject_reference, obligation_kind,
+             retired_profile_reference, retired_generation, obligation_at, erased_binding_revision, erased_at)
+            values (?, ?, ?, ?, 'APP_DELETION', ?, 1, ?, 1, ?)""",
+            UUID.randomUUID(), app.issuer, app.app, app.subject, UUID.randomUUID(),
+            java.sql.Timestamp.from(ago(400)), java.sql.Timestamp.from(ago(400)))
+    }
+
     private fun count(table: String): Int =
         jdbc.queryForObject("select count(*) from $table", Int::class.java)!!
 
@@ -172,7 +204,7 @@ class RetentionSweeperTest {
     }
 
     @Test fun `erasure fences and onboarding receipts are reported as retained, never deleted`() {
-        evidence(occurredAt = clock.instant())
+        erasureObligation()
         jdbc.update("insert into ums_iam_source_bindings (issuer_environment_ref, environment) values (?, 'test')",
             app.issuer)
         jdbc.update("""insert into ums_iam_onboarding_receipts
@@ -184,10 +216,62 @@ class RetentionSweeperTest {
 
         val report = sweeper().sweepAll()
 
+        assertThat(count("ums_profile_erasure_obligations")).isEqualTo(1)
         assertThat(count("ums_iam_onboarding_receipts")).isEqualTo(1)
-        assertThat(report.classes.filter { it.name == "erasure_fences" }.single().swept).isZero()
+        assertThat(report.classes.single { it.name == "erasure_fences" })
+            .isEqualTo(SweepClassResult("erasure_fences", 0, 1, 0))
+        assertThat(report.classes.single { it.name == "onboarding_receipts" })
+            .isEqualTo(SweepClassResult("onboarding_receipts", 0, 1, 0))
         assertThat(sweeper().rules().filter { it.table != null }.map { it.table })
             .doesNotContain("ums_profile_erasure_obligations", "ums_profile_expiry_fences")
+    }
+
+    @Test fun `privacy audit is swept only after a year`() {
+        audit(occurredAt = ago(400))
+        audit(occurredAt = ago(100))
+
+        sweeper().sweepAll()
+
+        assertThat(count("ums_profile_privacy_audit")).isEqualTo(1)
+    }
+
+    @Test fun `an old export is kept until its receipt is gone`() {
+        export(requestedAt = ago(8), withReceipt = true)
+
+        val first = sweeper().sweepAll()
+        assertThat(first.classes.single { it.name == "exports" }.swept).isZero()
+        assertThat(first.classes.single { it.name == "export_receipts" }.swept).isEqualTo(1)
+        assertThat(count("ums_profile_exports")).isEqualTo(1)
+
+        val second = sweeper().sweepAll()
+        assertThat(second.classes.single { it.name == "exports" }.swept).isEqualTo(1)
+        assertThat(count("ums_profile_exports")).isZero()
+    }
+
+    @Test fun `a receipt exactly at the boundary is kept`() {
+        receipt(acceptedAt = clock.instant().minus(Duration.ofDays(7)))
+        receipt(acceptedAt = clock.instant().minus(Duration.ofDays(7)).minus(Duration.ofSeconds(1)))
+
+        sweeper().sweepAll()
+
+        assertThat(count("ums_profile_patch_receipts")).isEqualTo(1)
+    }
+
+    @Test fun `a live export and its capability survive`() {
+        val reference = export(requestedAt = clock.instant().minus(Duration.ofHours(1)))
+        jdbc.update("""insert into ums_profile_export_capabilities
+            (capability_reference, export_reference, token_hash, expires_at, consumed_at, requested_at)
+            values (?, ?, ?, ?, ?, ?)""",
+            UUID.randomUUID(), reference, "f".repeat(64),
+            java.sql.Timestamp.from(clock.instant().minus(Duration.ofMinutes(3))),
+            java.sql.Timestamp.from(clock.instant().minus(Duration.ofMinutes(4))),
+            java.sql.Timestamp.from(clock.instant().minus(Duration.ofMinutes(5))))
+
+        val report = sweeper().sweepAll()
+
+        assertThat(report.classes.single { it.name == "exports" }.swept).isZero()
+        assertThat(count("ums_profile_exports")).isEqualTo(1)
+        assertThat(count("ums_profile_export_capabilities")).isEqualTo(1)
     }
 
     @Test fun `a failing record does not stop the rest of the sweep`() {
@@ -215,12 +299,15 @@ class RetentionSweeperTest {
         assertThat(count("ums_profile_patch_receipts")).isEqualTo(3)
     }
 
-    @Test fun `the scheduler runs a sweep`() {
+    @Test fun `the scheduler runs a sweep and publishes counts`() {
         receipt()
+        val signals = RetentionSignals()
 
-        RetentionSweepScheduler(sweeper()).sweep()
+        RetentionSweepScheduler(sweeper(), signals).sweep()
 
         assertThat(count("ums_profile_patch_receipts")).isZero()
+        assertThat(signals.report?.swept).isEqualTo(1)
+        assertThat(signals.report?.failed).isZero()
     }
 
     private class AdjustableClock(@Volatile private var now: Instant) : Clock() {
