@@ -26,7 +26,7 @@ data class ErasureEntry(
     val erasedAt: Instant,
     val obligationKind: String = "APP_DELETION",
     val causeReference: UUID? = null,
-    /** Monotonic feed order; the reconciliation cursor never depends on clocks. */
+    /** Append-order traceability only; the reconciliation cursor is the journal position. */
     val sequence: Long = 0,
 )
 

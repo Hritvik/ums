@@ -102,21 +102,29 @@ class RestoreReconciliationLifecycle(
         if (!Files.exists(journal.path)) {
             when {
                 bootstrapJournal -> {
+                    // A first-ever start has no data to resurrect; anything else is a restore.
+                    val bindings = jdbc.queryForObject("select count(*) from ums_profile_bindings",
+                        Long::class.java) ?: 0L
+                    check(bindings == 0L) {
+                        "Refusing to bootstrap the erasure journal: the database already has profiles"
+                    }
                     journal.initialise()
-                    log.info("Created a new erasure journal at {}", journal.path)
+                    log.warn("Created a new erasure journal at {}", journal.path)
                 }
                 allowMissingEvidence -> log.error(
                     "Erasure journal is missing at {}; starting in degraded mode by configuration", journal.path)
                 else -> throw IllegalStateException(
                     "Erasure journal is missing at ${journal.path}; refusing to serve without restore evidence")
             }
-        } else {
+        }
+        if (Files.exists(journal.path)) {
+            // Checked before flushing: refilling a truncated journal must not mask lost evidence.
+            check(reconciler.lastPosition() <= journal.entries().size) {
+                "Erasure journal is shorter than the reconciliation cursor; evidence is missing"
+            }
             val flushed = flusher.flushAll()
             check(!flusher.hasPending()) {
                 "Erasure journal could not be brought up to date; refusing to serve with pending evidence"
-            }
-            check(reconciler.lastPosition() <= journal.entries().size) {
-                "Erasure journal is shorter than the reconciliation cursor; evidence is missing"
             }
             val result = reconciler.reconcile()
             log.info("Restore reconciliation: {} entries, {} erased, {} already erased, {} newer generations, "

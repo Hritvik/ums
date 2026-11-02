@@ -3,7 +3,6 @@
 -- the erasure, then appended to the journal and marked appended.
 create table ums_erasure_journal_feed (
     feed_reference uuid primary key,
-    feed_sequence bigserial not null unique,
     issuer_environment_ref uuid not null,
     app_reference uuid not null,
     subject_reference uuid not null,
@@ -27,6 +26,7 @@ create index ums_erasure_journal_feed_pending
 -- it correct after a restore: a pre-deletion backup also carries a pre-deletion cursor.
 create table ums_erasure_reconciliation (
     singleton boolean primary key default true check (singleton),
-    last_position bigint not null default 0,
+    last_erased_at timestamptz,
+    last_feed_reference uuid,
     updated_at timestamptz not null default current_timestamp
 );

@@ -184,13 +184,19 @@ class RecoveryTest {
 
     @Test fun `startup fails when pending evidence cannot be journaled`() {
         ErasureFeed(jdbc).record(scope, UUID.randomUUID(), 1, 2, clock.instant(), "APP_DELETION", null)
-        val blocked = ErasureJournal(directory)
+        val blocked = ErasureJournal(directory.resolve("blocked").resolve("journal.jsonl"))
+        blocked.initialise()
+        blocked.path.toFile().setWritable(false)
         val flusher = ErasureJournalFlusher(ErasureFeed(jdbc), blocked)
-
-        assertThatThrownBy {
-            RestoreReconciliationLifecycle(jdbc, blocked, flusher,
-                RestoreReconciler(jdbc, transactions, mapper, "test", blocked, clock), allowMissingEvidence = false).start()
-        }.isInstanceOf(IllegalStateException::class.java)
+        try {
+            assertThatThrownBy {
+                RestoreReconciliationLifecycle(jdbc, blocked, flusher,
+                    RestoreReconciler(jdbc, transactions, mapper, "test", blocked, clock),
+                    allowMissingEvidence = false).start()
+            }.isInstanceOf(IllegalStateException::class.java)
+        } finally {
+            blocked.path.toFile().setWritable(true)
+        }
     }
 
     @Test fun `a torn trailing line is repaired on the next append`() {
@@ -273,7 +279,7 @@ class RecoveryTest {
 
         assertThatThrownBy {
             RestoreReconciliationLifecycle(jdbc, journal, flusher, reconciler, allowMissingEvidence = false).start()
-        }.isInstanceOf(IllegalStateException::class.java)
+        }.hasMessageContaining("shorter than the reconciliation cursor")
     }
 
     @Test fun `reconciliation withdraws a failed notice instead of leaving it sendable`() {
@@ -310,6 +316,7 @@ class RecoveryTest {
     }
 
     @Test fun `a new deployment bootstraps an empty journal`() {
+        jdbc.execute("truncate ums_profile_bindings cascade")
         val journal = journal()
         val flusher = ErasureJournalFlusher(ErasureFeed(jdbc), journal)
         val reconciler = RestoreReconciler(jdbc, transactions, mapper, "test", journal, clock)

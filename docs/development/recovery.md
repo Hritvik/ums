@@ -55,8 +55,9 @@ reconciliation finishes and a failure aborts startup before the port opens:
 If the journal path is configured but the file is missing, or pending feed rows cannot be
 appended, startup fails: serving a restored database without evidence would be exactly the
 resurrection the gate forbids. A first-time deployment sets
-`ums.recovery.bootstrap-journal=true` once to create the header; after that the flag stays off,
-so a missing journal in a restored environment is fatal. Appending to a file whose header is not the journal header is
+`ums.recovery.bootstrap-journal=true` once to create the header; the flag is refused when the
+database already holds any profile, and it stays off afterwards, so a missing journal in a
+restored environment is fatal. Appending to a file whose header is not the journal header is
 refused, so a rotated or foreign file cannot silently swallow evidence. Setting
 `ums.recovery.allow-missing-evidence=true` is the explicit, logged degraded mode for a
 non-privacy environment.

@@ -8,13 +8,13 @@ This is the evidence the privacy-capable deployment gate asks for, recorded from
 
 | Item | Result |
 |---|---|
-| Backup age at restore | 46 ms (the drill dumps and restores within one test; production age comes from the backup monitor) |
+| Backup age at restore | 44 ms (the drill dumps and restores within one test; production age comes from the backup monitor) |
 | Lost changes | 1 — the erasure performed after the backup |
 | Restored fences, before reconciliation | 0 |
 | Restored fences, after reconciliation | 1 (`APP_DELETION` obligation for the retired generation) |
-| Migration result | 21 (restored history matches the deployed schema) |
+| Migration result | 22 (restored history matches the deployed schema) |
 | Checkpoint convergence | 1 checkpoint restored, unchanged by reconciliation |
-| Elapsed recovery | 181 ms from restore start to verified erased state |
+| Elapsed recovery | 314 ms from restore start to verified erased state |
 | Journal entries replayed | 1 |
 
 Post-conditions verified in the restored copy: `lifecycle = ERASED`, display name and all display
