@@ -148,7 +148,7 @@ Five provider inputs do not exist yet and are carried as named gaps rather than 
 
 **Summary.** Every capability so far trusts a caller object that a test constructs. Real callers will present tokens, and those tokens must be checked for the right issuer, audience, app, subject, assurance, and delegation before anything is allowed. This item replaces the trust seam with real validation and defines the caller context every other surface will use.
 
-**Status.** Implemented and unit-verified against the pinned provider fixture; see [caller authority](caller-authority.md).
+**Status.** Integrated — caller authority is implemented and verified; see [caller authority](caller-authority.md) and the central evidence file.
 
 **Work to be done.**
 - Replace the test-only decoder path with production token validation that checks issuer, environment, audience, token kind, app binding, subject kind, assurance, security versions, and registered delegation.
@@ -178,7 +178,7 @@ Five provider inputs do not exist yet and are carried as named gaps rather than 
 
 **Summary.** Profiles must be created, closed, and deleted from IAM facts that actually arrive over the network, and duplicates, gaps, and out-of-order delivery must not corrupt state. Today only a local adapter call exists. This item adds the authenticated entry point and the repair behavior around it.
 
-**Status.** Green — ingestion and snapshot repair implemented; the authenticated transport is a named gate, not built.
+**Status.** Integrated — ingestion and snapshot repair implemented; the authenticated transport remains a named gate, not built. See the central evidence file.
 
 **Work to be done.**
 - Add a private, authenticated inbound endpoint that accepts only the registered IAM event types for the registered app, and rejects unknown fields, duplicate keys, oversized bodies, and trailing content.
@@ -207,7 +207,7 @@ Five provider inputs do not exist yet and are carried as named gaps rather than 
 
 **Summary.** The service currently exposes no business routes, so no product can use it. This item turns the already-tested internal services into the eight operations the published contract describes, with honest status codes and bounded bodies.
 
-**Status.** Green for the user-facing surface. Internal projection/configuration routes and export remain gated, not built.
+**Status.** Integrated for the user-facing surface; internal projection/configuration routes remain gated, not built. See the central evidence file.
 
 **Work to be done.**
 - Implement the declared profile read and update operations, the status read, the deletion request and cancellation commands, and the restricted status read against the existing application services.
@@ -272,7 +272,7 @@ acceptance; the retired `ums.member.mapping.changed.v1` event is not revived.
 
 **Summary.** A person is entitled to a copy of the data UMS holds about them for one app. That copy must not become a permanent second store of personal data, and it must disappear if the profile is deleted while it exists. This item adds export generation, a short-lived download, and the invalidation rules around them.
 
-**Status.** Green — implemented and verified; awaiting review.
+**Status.** Integrated — see [scoped exports](exports.md) and the central evidence file.
 
 **Work to be done.**
 - Define and publish the export contract before implementing it: the artifact states, the 24-hour artifact lifetime, and the single-use download capability of at most five minutes.
@@ -366,7 +366,7 @@ acceptance; avatar attachment stays disabled until then.
 
 **Summary.** The service records what happened in an outbox, but nothing ever sends it, so no consumer has ever received a real event. This item adds the sender, including what happens when a consumer is down for a long time. It must deliver at least once without inventing exactly-once claims.
 
-**Status.** Green — implemented and verified; awaiting review.
+**Status.** Integrated — see [outbox relay](outbox-relay.md) and the central evidence file.
 
 **Work to be done.**
 - Add a relay that claims unpublished outbox rows, publishes them in binding-revision order per binding, and marks them published only after the transport accepts them.
@@ -395,7 +395,7 @@ acceptance; avatar attachment stays disabled until then.
 
 **Summary.** Every record the service keeps has a stated lifetime, but nothing currently deletes anything on time. That turns a disclosed retention promise into indefinite storage. This item adds the sweeps and the safeguards that keep erasure evidence while removing everything else.
 
-**Status.** Green — implemented and verified; awaiting review.
+**Status.** Integrated — see [retention sweeps](retention.md) and the central evidence file.
 
 **Work to be done.**
 - Implement sweeps for the records with a declared lifetime: command receipts, published outbox and processed inbox payloads, export artifacts, and failed or partial exports.
@@ -423,7 +423,7 @@ acceptance; avatar attachment stays disabled until then.
 
 **Summary.** If a backup taken before a deletion is restored, the deleted data must not come back. That is the hardest promise in the design and it cannot be met by the database alone. This item establishes independently durable deletion evidence and proves it with an actual restore.
 
-**Status.** Green — implemented and verified; awaiting review.
+**Status.** Integrated — see [restore recovery](recovery.md), [the drill](restore-drill.md), and the central evidence file.
 
 **Work to be done.**
 - Decide and implement how acknowledged lifecycle transitions survive a restore, through an independently durable minimized journal or an equivalent mechanism the chosen infrastructure can actually provide.
@@ -452,7 +452,7 @@ acceptance; avatar attachment stays disabled until then.
 
 **Summary.** Erasure, notices, retries, and sweeps all exist as code that somebody must call by hand. In a real deployment they need to run on their own and shout when they fall behind. This item adds the scheduling, the alerts, and the procedures an operator follows.
 
-**Status.** Green — implemented and verified; awaiting review.
+**Status.** Integrated — see [runbooks](../operations/runbooks.md), [operating tier](../operations/operating-tier.md), and the central evidence file.
 
 **Work to be done.**
 - Add worker modes that run the finalizers, notice scheduling, relay, sweeps, and backup checks on a defined cadence, with single-flight behavior so two workers do not duplicate work.
@@ -509,7 +509,7 @@ acceptance; avatar attachment stays disabled until then.
 
 **Summary.** The service will be upgraded while it holds real data, and a bad upgrade must not lose or resurrect anything. This item proves the migrations work forward from every earlier state and records what a rollback cannot do.
 
-**Status.** Green — implemented and verified; awaiting review.
+**Status.** Integrated — see [upgrade and rollback](../operations/upgrade-and-rollback.md) and the central evidence file.
 
 **Work to be done.**
 - Test a forward migration from each previously shipped schema state to the current one, including from a database that carries erased profiles and open deletion requests.
