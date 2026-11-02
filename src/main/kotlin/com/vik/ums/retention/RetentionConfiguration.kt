@@ -23,21 +23,37 @@ class RetentionConfiguration {
     @Bean
     fun retentionSignals(): RetentionSignals = RetentionSignals()
 
-    /** Counts only: a failing sweep is visible without exposing a record or a subject. */
+    /** Counts only, per class: a failing sweep is visible without exposing a record or subject. */
     @Bean
-    fun retentionMetrics(signals: RetentionSignals): MeterBinder = MeterBinder { registry ->
-        Gauge.builder("ums.retention.swept", signals) { it.report?.swept?.toDouble() ?: Double.NaN }
-            .register(registry)
-        Gauge.builder("ums.retention.retained", signals) { it.report?.retained?.toDouble() ?: Double.NaN }
-            .register(registry)
-        Gauge.builder("ums.retention.failed", signals) { it.report?.failed?.toDouble() ?: Double.NaN }
-            .register(registry)
+    fun retentionMetrics(signals: RetentionSignals, sweeper: RetentionSweeper): MeterBinder = MeterBinder { registry ->
+        sweeper.rules().forEach { rule ->
+            count(registry, signals, rule.name, "swept") { it.swept }
+            count(registry, signals, rule.name, "retained") { it.retained }
+            count(registry, signals, rule.name, "failed") { it.failed }
+        }
+        Gauge.builder("ums.retention.last.completed.seconds", signals) {
+            it.completedAt?.let { completed -> java.time.Duration.between(completed, java.time.Instant.now()).seconds.toDouble() }
+                ?: Double.NaN
+        }.register(registry)
+    }
+
+    private fun count(registry: io.micrometer.core.instrument.MeterRegistry, signals: RetentionSignals,
+                      name: String, metric: String, value: (SweepClassResult) -> Int) {
+        Gauge.builder("ums.retention.$metric", signals) {
+            it.report?.classes?.firstOrNull { result -> result.name == name }?.let(value)?.toDouble() ?: Double.NaN
+        }.tag("class", name).register(registry)
     }
 }
 
 /** Last completed sweep, published for metrics. */
 class RetentionSignals {
     @Volatile var report: RetentionReport? = null
+    @Volatile var completedAt: java.time.Instant? = null
+
+    fun record(report: RetentionReport) {
+        this.report = report
+        this.completedAt = java.time.Instant.now()
+    }
 }
 
 /**
@@ -56,7 +72,7 @@ class RetentionSweepScheduler(
     )
     fun sweep() {
         val report = sweeper.sweepAll()
-        signals.report = report
+        signals.record(report)
         if (report.swept > 0 || report.failed > 0) {
             log.info("Retention sweep removed {} records, retained {}, failed {}",
                 report.swept, report.retained, report.failed)

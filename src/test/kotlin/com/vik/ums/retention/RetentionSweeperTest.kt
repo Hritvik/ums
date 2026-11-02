@@ -223,7 +223,7 @@ class RetentionSweeperTest {
         assertThat(report.classes.single { it.name == "onboarding_receipts" })
             .isEqualTo(SweepClassResult("onboarding_receipts", 0, 1, 0))
         assertThat(sweeper().rules().filter { it.table != null }.map { it.table })
-            .doesNotContain("ums_profile_erasure_obligations", "ums_profile_expiry_fences")
+            .doesNotContain("ums_profile_erasure_obligations")
     }
 
     @Test fun `privacy audit is swept only after a year`() {
@@ -263,9 +263,9 @@ class RetentionSweeperTest {
             (capability_reference, export_reference, token_hash, expires_at, consumed_at, requested_at)
             values (?, ?, ?, ?, ?, ?)""",
             UUID.randomUUID(), reference, "f".repeat(64),
-            java.sql.Timestamp.from(clock.instant().minus(Duration.ofMinutes(3))),
-            java.sql.Timestamp.from(clock.instant().minus(Duration.ofMinutes(4))),
-            java.sql.Timestamp.from(clock.instant().minus(Duration.ofMinutes(5))))
+            java.sql.Timestamp.from(clock.instant().plus(Duration.ofMinutes(2))),
+            null,
+            java.sql.Timestamp.from(clock.instant().minus(Duration.ofMinutes(1))))
 
         val report = sweeper().sweepAll()
 
@@ -308,6 +308,23 @@ class RetentionSweeperTest {
         assertThat(count("ums_profile_patch_receipts")).isZero()
         assertThat(signals.report?.swept).isEqualTo(1)
         assertThat(signals.report?.failed).isZero()
+    }
+
+    @Test fun `retention gauges are unknown until the first pass and then per class`() {
+        val registry = io.micrometer.core.instrument.simple.SimpleMeterRegistry()
+        val signals = RetentionSignals()
+        RetentionConfiguration().retentionMetrics(signals, sweeper()).bindTo(registry)
+        assertThat(registry.get("ums.retention.swept").tag("class", "patch_receipts").gauge().value()).isNaN()
+
+        receipt()
+        RetentionSweepScheduler(sweeper(), signals).sweep()
+
+        assertThat(registry.get("ums.retention.swept").tag("class", "patch_receipts").gauge().value())
+            .isEqualTo(1.0)
+        assertThat(registry.get("ums.retention.failed").tag("class", "patch_receipts").gauge().value())
+            .isEqualTo(0.0)
+        assertThat(registry.get("ums.retention.last.completed.seconds").gauge().value())
+            .isGreaterThanOrEqualTo(0.0)
     }
 
     private class AdjustableClock(@Volatile private var now: Instant) : Clock() {

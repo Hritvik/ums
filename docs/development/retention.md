@@ -43,7 +43,11 @@ profiles.
   never swept. Processed inbox rows are removed only after their dedupe window; the binding's
   revision check and erasure fences still reject stale traffic.
 - The sweep runs hourly by default (`ums.retention.sweep.enabled`, interval, initial delay) and
-  logs counts only — no identifier, subject, reference, or payload value.
+  logs totals only — no identifier, subject, reference, or payload value.
+- The last completed sweep is also exported as `ums.retention.swept`, `ums.retention.retained`
+  and `ums.retention.failed`, tagged by class, plus `ums.retention.last.completed.seconds`
+  (seconds since the last completed pass). Before the first pass the gauges are `NaN`, so an
+  unknown state never reads as zero, and a stalled sweep shows as a growing age.
 
 ## Configuration
 
