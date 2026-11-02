@@ -45,6 +45,8 @@ no app subject, identity, contact detail, credential, or token.
 
 ## Deliberate limits
 
+- **Lazy status sweep.** Reading an export's status still expires it in place, so a GET can
+  write; the scheduler is what guarantees the 24-hour promise without a reader.
 - **Storage is a database copy.** The artifact is JSONB in the UMS database behind the same
   access controls; there is no object store or encryption-at-rest beyond the database.
 - **Sweeping is in-process.** The sweep runs on the service's own schedule; alerting on a
@@ -56,7 +58,7 @@ no app subject, identity, contact detail, credential, or token.
 
 ## Verification
 
-250 JVM tests, 7 contract tests, 23 producer/input checks, 96.6% line / 80.7% branch.
+250 JVM tests, 8 contract tests, 24 producer/input checks, 96.6% line / 80.7% branch.
 Service tests cover the closed artifact and idempotent replay, single use including two
 concurrent redemptions, one live capability including two concurrent requests, cross-subject
 redemption, the five-minute capability boundary, the 24-hour artifact boundary with payload

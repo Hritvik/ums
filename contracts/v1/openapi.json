@@ -797,8 +797,8 @@
         },
         "parameters": [
           {
-            "name": "Idempotency-Key",
-            "in": "header",
+            "name": "requestId",
+            "in": "path",
             "required": true,
             "schema": {
               "type": "string",
@@ -1202,7 +1202,28 @@
               }
             }
           }
-        }
+        },
+        "parameters": [
+          {
+            "name": "appId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            }
+          },
+          {
+            "name": "subjectRef",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ]
       },
       "parameters": [
         {
@@ -1356,6 +1377,16 @@
           }
         },
         "parameters": [
+          {
+            "name": "appId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            }
+          },
           {
             "name": "Idempotency-Key",
             "in": "header",
@@ -1519,7 +1550,19 @@
               }
             }
           }
-        }
+        },
+        "parameters": [
+          {
+            "name": "appId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            }
+          }
+        ]
       }
     },
     "/api/v1/profile/exports/{exportReference}/downloads": {

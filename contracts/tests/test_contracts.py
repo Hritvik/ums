@@ -1,5 +1,6 @@
 import json
 import pathlib
+import re
 import unittest
 from jsonschema import Draft202012Validator, FormatChecker
 from referencing import Registry, Resource
@@ -54,6 +55,19 @@ class ContractBundle(unittest.TestCase):
                     continue
                 for code in ['400', '401', '403', '404', '409', '422', '429', '500', '503']:
                     self.assertIn('content', operation['responses'][code])
+
+    def test_templated_paths_declare_their_parameters(self):
+        spec = json.loads((ROOT / 'openapi.json').read_text())
+        for path, item in spec['paths'].items():
+            names = set(re.findall(r'\{([^}]+)\}', path))
+            if not names:
+                continue
+            for method, operation in item.items():
+                if method not in ['get', 'post', 'put', 'patch', 'delete']:
+                    continue
+                declared = {parameter['name'] for parameter in operation.get('parameters', [])
+                            if parameter.get('in') == 'path'}
+                self.assertEqual(names, declared, path)
 
     def test_deletion_status_requires_distinct_binding_revision(self):
         schema = json.loads((ROOT / 'schemas/deletion-request-status.json').read_text())
