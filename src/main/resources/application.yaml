@@ -33,6 +33,7 @@ ums:
   #   erasure-journal-path: /var/lib/ums/erasure-journal.jsonl   # required for privacy mode
   #   backup-status-file: /var/lib/ums/backup-status.json
   #   allow-missing-evidence: false
+  #   bootstrap-journal: false   # set once on a first-ever start only
   retention:
     sweep:
       enabled: ${UMS_RETENTION_SWEEP_ENABLED:true}

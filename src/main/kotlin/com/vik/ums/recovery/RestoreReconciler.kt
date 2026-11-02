@@ -34,17 +34,19 @@ class RestoreReconciler(
     private val clock: Clock,
 ) {
     fun reconcile(): ReconciliationResult {
-        val cursor = cursor()
-        val entries = journal.entries()
-            .distinctBy { it.feedReference }
-            .filter { it.sequence > cursor }
-            .sortedWith(ORDER)
+        val all = journal.entries()
+        val cursor = lastPosition()
+        check(cursor <= all.size) {
+            "Erasure journal has ${all.size} entries but reconciliation applied $cursor; evidence is missing"
+        }
+        val entries = all.drop(cursor.toInt())
         var erased = 0
         var already = 0
         var newer = 0
         var missing = 0
-        for (entry in entries) {
-            when (transactions.execute { apply(entry) } ?: Outcome.MISSING) {
+        for ((index, entry) in entries.withIndex()) {
+            val position = cursor + index + 1
+            when (transactions.execute { apply(entry, position) } ?: Outcome.MISSING) {
                 Outcome.ERASED -> erased++
                 Outcome.ALREADY_ERASED -> already++
                 Outcome.NEWER_GENERATION -> newer++
@@ -54,17 +56,18 @@ class RestoreReconciler(
         return ReconciliationResult(entries.size, erased, already, newer, missing)
     }
 
-    private fun cursor(): Long = jdbc.query("select last_sequence from ums_erasure_reconciliation",
+    /** Number of journal entries already applied, by append order (never a database sequence). */
+    fun lastPosition(): Long = jdbc.query("select last_position from ums_erasure_reconciliation",
         { rs: ResultSet, _: Int -> rs.getLong(1) }).singleOrNull() ?: 0L
 
-    private fun advance(entry: ErasureEntry) {
-        jdbc.update("""insert into ums_erasure_reconciliation (singleton, last_sequence, updated_at)
+    private fun advance(position: Long) {
+        jdbc.update("""insert into ums_erasure_reconciliation (singleton, last_position, updated_at)
             values (true, ?, current_timestamp)
-            on conflict (singleton) do update set last_sequence = excluded.last_sequence,
-                updated_at = excluded.updated_at""", entry.sequence)
+            on conflict (singleton) do update set last_position = excluded.last_position,
+                updated_at = excluded.updated_at""", position)
     }
 
-    private fun apply(entry: ErasureEntry): Outcome {
+    private fun apply(entry: ErasureEntry, position: Long): Outcome {
         val scope = entry.scope
         val current = jdbc.query("""select binding_revision, lifecycle, generation
             from ums_profile_bindings
@@ -73,14 +76,14 @@ class RestoreReconciler(
             val generation = rs.getLong(3).let { if (rs.wasNull()) null else it }
             Binding(rs.getLong(1), Lifecycle.valueOf(rs.getString(2)), generation)
         }, scope.issuerEnvironmentRef, scope.appReference, scope.subjectReference).singleOrNull()
-            ?: run { advance(entry); return Outcome.MISSING }
+            ?: run { advance(position); return Outcome.MISSING }
         if (current.lifecycle == Lifecycle.ERASED) {
-            advance(entry)
+            advance(position)
             return Outcome.ALREADY_ERASED
         }
         // The erasure retired one generation; a newer one is a deliberate re-onboarding.
         if (current.generation != entry.retiredGeneration) {
-            advance(entry)
+            advance(position)
             return Outcome.NEWER_GENERATION
         }
 
@@ -117,7 +120,7 @@ class RestoreReconciler(
         suppressNotices(jdbc, mapper, environment, scope, entry.feedReference.toString(), clock.instant())
         log.warn("Restore reconciliation erased a resurrected profile in app {} revision {}",
             scope.appReference, revision)
-        advance(entry)
+        advance(position)
         return Outcome.ERASED
     }
 
@@ -126,8 +129,6 @@ class RestoreReconciler(
     private enum class Outcome { ERASED, ALREADY_ERASED, NEWER_GENERATION, MISSING }
 
     private companion object {
-        val ORDER: Comparator<ErasureEntry> =
-            compareBy<ErasureEntry>({ it.sequence }, { it.erasedAt }, { it.feedReference })
         val log = LoggerFactory.getLogger(RestoreReconciler::class.java)
     }
 }

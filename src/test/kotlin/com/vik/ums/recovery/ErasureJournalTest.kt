@@ -41,6 +41,15 @@ class ErasureJournalTest {
         assertThatThrownBy { journal.append(entry()) }.isInstanceOf(ErasureJournalException::class.java)
     }
 
+    @Test fun `a foreign file without a trailing newline is refused, not truncated`() {
+        val path = directory.resolve("journal.jsonl")
+        Files.writeString(path, "{\"version\":1,\"journal\":\"other\"}")
+        val journal = ErasureJournal(path)
+
+        assertThatThrownBy { journal.append(entry()) }.isInstanceOf(ErasureJournalException::class.java)
+        assertThat(Files.readString(path)).contains("other")
+    }
+
     @Test fun `a long torn tail is truncated without losing earlier entries`() {
         val journal = ErasureJournal(directory.resolve("journal.jsonl"))
         journal.append(entry())

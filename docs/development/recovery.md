@@ -35,9 +35,11 @@ reconciliation finishes and a failure aborts startup before the port opens:
 
 1. Every pending feed row is flushed to the journal (all batches, not just one).
 2. Every journal entry after the stored cursor is applied to the current database. The cursor
-   (`ums_erasure_reconciliation`, feed sequence) travels with the data, so a restored backup
-   carries its old cursor and still replays everything that happened after it; repeated boots
-   process only new entries, and the cursor never depends on clocks. If the binding is already erased,
+   (`ums_erasure_reconciliation`) counts journal entries in append order, so it travels with the
+   data, a restored backup carries its old cursor and still replays everything that happened
+   after it, and no clock or database sequence can reorder it. Repeated boots process only new
+   entries. If the journal is shorter than the cursor — a wiped or truncated file — startup
+   fails rather than serving the difference. If the binding is already erased,
    nothing happens. If its current generation differs from the retired one, it is a deliberate
    re-onboarding after the erasure and is left alone. Otherwise the binding is erased again
    (fields nulled, lifecycle `ERASED`, profile and generation retired, revision bumped) and an
@@ -52,8 +54,9 @@ reconciliation finishes and a failure aborts startup before the port opens:
 
 If the journal path is configured but the file is missing, or pending feed rows cannot be
 appended, startup fails: serving a restored database without evidence would be exactly the
-resurrection the gate forbids. A database with no erasure obligation has nothing to resurrect,
-so a genuinely new deployment bootstraps an empty journal header instead of failing. Appending to a file whose header is not the journal header is
+resurrection the gate forbids. A first-time deployment sets
+`ums.recovery.bootstrap-journal=true` once to create the header; after that the flag stays off,
+so a missing journal in a restored environment is fatal. Appending to a file whose header is not the journal header is
 refused, so a rotated or foreign file cannot silently swallow evidence. Setting
 `ums.recovery.allow-missing-evidence=true` is the explicit, logged degraded mode for a
 non-privacy environment.
@@ -79,6 +82,7 @@ check both gauges are `NaN`, so "unknown" never reads as "healthy".
 |---|---|---|
 | `ums.recovery.erasure-journal-path` | unset | enables the journal, flusher and reconciliation; required for privacy mode |
 | `ums.recovery.allow-missing-evidence` | `false` | starts in logged degraded mode when the journal is missing |
+| `ums.recovery.bootstrap-journal` | `false` | creates the header on a first-ever start; never set it on a restore |
 | `ums.recovery.journal-flush.interval` | `PT15S` | retry interval for pending appends |
 | `ums.recovery.journal-flush.batch-size` | `100` | appends per pass |
 | `ums.recovery.backup-status-file` | unset | enables backup monitoring |

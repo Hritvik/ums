@@ -46,7 +46,8 @@ class RecoveryConfiguration {
                                        flusher: ErasureJournalFlusher, reconciler: RestoreReconciler,
                                        environment: Environment): SmartLifecycle =
         RestoreReconciliationLifecycle(jdbc, journal, flusher, reconciler,
-            environment.getProperty("ums.recovery.allow-missing-evidence", "false").toBoolean())
+            environment.getProperty("ums.recovery.allow-missing-evidence", "false").toBoolean(),
+            environment.getProperty("ums.recovery.bootstrap-journal", "false").toBoolean())
 
     @Bean
     @ConditionalOnProperty(name = ["ums.recovery.erasure-journal-path"])
@@ -93,30 +94,29 @@ class RestoreReconciliationLifecycle(
     private val flusher: ErasureJournalFlusher,
     private val reconciler: RestoreReconciler,
     private val allowMissingEvidence: Boolean,
+    private val bootstrapJournal: Boolean = false,
 ) : SmartLifecycle {
     @Volatile private var running = false
 
     override fun start() {
         if (!Files.exists(journal.path)) {
-            if (allowMissingEvidence) {
-                log.error("Erasure journal is missing at {}; starting in degraded mode by configuration",
-                    journal.path)
-            } else {
-                val erasedBefore = jdbc.queryForObject(
-                    "select count(*) from ums_profile_erasure_obligations", Long::class.java) ?: 0L
-                if (erasedBefore > 0L) {
-                    throw IllegalStateException(
-                        "Erasure journal is missing at ${journal.path} after an erasure; refusing to serve without evidence")
+            when {
+                bootstrapJournal -> {
+                    journal.initialise()
+                    log.info("Created a new erasure journal at {}", journal.path)
                 }
-                // A new deployment has nothing to resurrect; create the evidence file so the next
-                // erasure has somewhere to go.
-                journal.initialise()
-                log.info("Initialised an empty erasure journal at {}", journal.path)
+                allowMissingEvidence -> log.error(
+                    "Erasure journal is missing at {}; starting in degraded mode by configuration", journal.path)
+                else -> throw IllegalStateException(
+                    "Erasure journal is missing at ${journal.path}; refusing to serve without restore evidence")
             }
         } else {
             val flushed = flusher.flushAll()
             check(!flusher.hasPending()) {
                 "Erasure journal could not be brought up to date; refusing to serve with pending evidence"
+            }
+            check(reconciler.lastPosition() <= journal.entries().size) {
+                "Erasure journal is shorter than the reconciliation cursor; evidence is missing"
             }
             val result = reconciler.reconcile()
             log.info("Restore reconciliation: {} entries, {} erased, {} already erased, {} newer generations, "

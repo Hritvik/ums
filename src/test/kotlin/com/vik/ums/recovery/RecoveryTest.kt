@@ -264,6 +264,36 @@ class RecoveryTest {
         assertThat(signals.age).isEqualTo(Duration.ofHours(27))
     }
 
+    @Test fun `a journal shorter than the cursor stops startup`() {
+        val journal = journal()
+        journal.initialise()
+        jdbc.update("""insert into ums_erasure_reconciliation (singleton, last_position) values (true, 3)""")
+        val flusher = ErasureJournalFlusher(ErasureFeed(jdbc), journal)
+        val reconciler = RestoreReconciler(jdbc, transactions, mapper, "test", journal, clock)
+
+        assertThatThrownBy {
+            RestoreReconciliationLifecycle(jdbc, journal, flusher, reconciler, allowMissingEvidence = false).start()
+        }.isInstanceOf(IllegalStateException::class.java)
+    }
+
+    @Test fun `reconciliation withdraws a failed notice instead of leaving it sendable`() {
+        jdbc.update("""insert into ums_profile_notice_intents
+            (notice_reference, issuer_environment_ref, app_reference, subject_reference, notice_class,
+             deadline, dedupe_identity, state, queued_at)
+            values (?, ?, ?, ?, 'CLOSURE_EXPIRY_7_DAY', ?, ?, 'FAILED', ?)""",
+            UUID.randomUUID(), issuer, app, subject, java.sql.Timestamp.from(clock.instant().plus(Duration.ofDays(7))),
+            "a".repeat(64), java.sql.Timestamp.from(clock.instant()))
+        val journal = journal()
+        journal.append(entry(generation()))
+
+        RestoreReconciler(jdbc, transactions, mapper, "test", journal, clock).reconcile()
+
+        assertThat(jdbc.queryForObject("select state from ums_profile_notice_intents", String::class.java))
+            .isEqualTo("SUPPRESSED")
+        assertThat(jdbc.queryForObject("""select payload->>'state' from ums_event_outbox
+            where event_type = 'ums.profile.notice-intent.v1'""", String::class.java)).isEqualTo("SUPPRESSED")
+    }
+
     @Test fun `a missing journal stops startup unless degraded mode is accepted`() {
         // An erasure already happened: a missing journal means the evidence is gone.
         erasureObligation()
@@ -284,7 +314,12 @@ class RecoveryTest {
         val flusher = ErasureJournalFlusher(ErasureFeed(jdbc), journal)
         val reconciler = RestoreReconciler(jdbc, transactions, mapper, "test", journal, clock)
 
-        RestoreReconciliationLifecycle(jdbc, journal, flusher, reconciler, allowMissingEvidence = false).start()
+        assertThatThrownBy {
+            RestoreReconciliationLifecycle(jdbc, journal, flusher, reconciler, allowMissingEvidence = false).start()
+        }.isInstanceOf(IllegalStateException::class.java)
+
+        RestoreReconciliationLifecycle(jdbc, journal, flusher, reconciler,
+            allowMissingEvidence = false, bootstrapJournal = true).start()
 
         assertThat(Files.exists(journal.path)).isTrue()
         assertThat(journal.entries()).isEmpty()

@@ -27,6 +27,6 @@ create index ums_erasure_journal_feed_pending
 -- it correct after a restore: a pre-deletion backup also carries a pre-deletion cursor.
 create table ums_erasure_reconciliation (
     singleton boolean primary key default true check (singleton),
-    last_sequence bigint not null default 0,
+    last_position bigint not null default 0,
     updated_at timestamptz not null default current_timestamp
 );
