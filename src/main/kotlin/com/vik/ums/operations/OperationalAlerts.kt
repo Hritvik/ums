@@ -42,6 +42,8 @@ class OperationalAlerts(
     private val retentionEnabled: Boolean = true,
     private val objective: Duration = Duration.ofHours(24),
     private val failureBurst: Long = 5,
+    private val startupGrace: Duration = Duration.ofHours(2),
+    private val startedAt: java.time.Instant = clock.instant(),
 ) {
     @Volatile private var observedFailures = 0L
 
@@ -53,10 +55,12 @@ class OperationalAlerts(
             where status = 'PENDING' and deadline <= ?""", now.minus(objective))
         val poisoned = count("select count(*) from ums_event_outbox where quarantined_at is not null", null)
         val quarantine = count("select count(*) from ums_iam_ingestion_quarantine where state = 'OPEN'", null)
-        // A disabled or never-completed sweep is a cleanup failure, not a healthy zero.
+        // A disabled or never-completed sweep is a cleanup failure, not a healthy zero; the
+        // startup grace keeps the alert from firing before the first scheduled pass.
+        val longEnough = Duration.between(startedAt, now) > startupGrace
         val failed = retention.report?.failed?.toLong()
-            ?: if (retentionEnabled && retention.completedAt == null) 1L else 0L
-        val exportFailed = if (exports.failed) 1L else 0L
+            ?: if (retentionEnabled && retention.completedAt == null && longEnough) 1L else 0L
+        val exportFailed = if (exports.failed || exports.lastCompletedAt == null) 1L else 0L
         val backupFailed = !backup.configured || backup.failed
         return AlertSnapshot(overdue, beyond, poisoned, quarantine, failed, exportFailed, backupFailed,
             failures.count())

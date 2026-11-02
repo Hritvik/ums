@@ -58,14 +58,19 @@ class MaintenanceWorker(
         var finalized = 0
         var blocked = 0
         var retryable = 0
-        for (app in applications()) {
-            if (finalized + blocked + retryable >= maxFinalizations) break
-            var cursor: DeletionBatchCursor? = null
-            var page = 0
-            while (page < maxPages) {
+        val apps = applications()
+        val cursors = mutableMapOf<AppScope, DeletionBatchCursor?>()
+        val pages = mutableMapOf<AppScope, Int>()
+        var leaseHeld = true
+        // Round-robin one page per application, so a permanently blocked app cannot consume the
+        // whole pass while others wait.
+        while (leaseHeld && apps.any { (pages[it] ?: 0) < maxPages } && finalized < maxFinalizations) {
+            var progressed = false
+            for (app in apps) {
+                if ((pages[app] ?: 0) >= maxPages) continue
                 val result = batches.run(
                     TrustedMaintenanceAuthority(app, UUID.randomUUID(), MaintenancePurpose.FINALIZE_APP_DELETION),
-                    batchLimit, cursor, "maintenance-worker")
+                    batchLimit, cursors[app], "maintenance-worker")
                 result.results.forEach {
                     when (it.outcome) {
                         com.vik.ums.privacy.DeletionBatchOutcome.LOCAL_COMPLETED -> finalized++
@@ -73,11 +78,17 @@ class MaintenanceWorker(
                         com.vik.ums.privacy.DeletionBatchOutcome.RETRYABLE -> retryable++
                     }
                 }
-                cursor = result.nextCursor ?: break
-                page++
-                lease.renew(WORKER, holder, Duration.ofMinutes(10))
+                pages[app] = (pages[app] ?: 0) + 1
+                cursors[app] = result.nextCursor
+                if (result.nextCursor == null) pages[app] = maxPages
+                progressed = true
+                if (finalized >= maxFinalizations) break
+                leaseHeld = lease.renew(WORKER, holder, Duration.ofMinutes(10))
+                if (!leaseHeld) break
             }
+            if (!progressed) break
         }
+        if (!leaseHeld) log.warn("Maintenance worker lost its lease and stopped the pass")
         if (finalized + blocked + retryable > 0) {
             log.info("Maintenance pass finalized {}, blocked {}, retryable {}", finalized, blocked, retryable)
         }

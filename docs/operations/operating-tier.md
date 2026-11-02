@@ -7,7 +7,7 @@ limits below are accepted rather than hidden.
 
 | Work | Cadence | Guard |
 |---|---|---|
-| Due-deletion finalization | every 5 min | worker lease; batches of 50, up to 20 pages per app |
+| Due-deletion finalization | every 5 min | worker lease; round-robin pages of 50, up to 20 per app, 200 finalizations per pass |
 | Retention notices | every 5 min | one intent per class and closure instance |
 | Outbox relay | every 30 s | claim lease per fact |
 | Export sweep | every 15 min | transactional |

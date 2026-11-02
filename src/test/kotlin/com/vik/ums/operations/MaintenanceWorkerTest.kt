@@ -130,6 +130,16 @@ class MaintenanceWorkerTest {
         assertThat(worker.run().noticesScheduled).isZero()
     }
 
+    @Test fun `a sweep that never completes alerts after the startup grace`() {
+        val late = OperationalAlerts(jdbc, clock, failures, RetentionSignals(), backup, exports, alertSignals,
+            retentionEnabled = true, startedAt = clock.instant().minus(Duration.ofHours(3)))
+
+        late.check()
+
+        assertThat(alertSignals.snapshot?.failedRetentionSweeps).isEqualTo(1)
+        assertThat(alertSignals.snapshot?.failedExportCleanup).isEqualTo(1)
+    }
+
     @Test fun `a disabled retention sweep is not reported as a failure`() {
         val disabled = OperationalAlerts(jdbc, clock, failures, RetentionSignals(), backup, exports, alertSignals,
             retentionEnabled = false)
@@ -207,6 +217,18 @@ class MaintenanceWorkerTest {
         assertThat(lease.tryAcquire("maintenance", Duration.ofMinutes(10))).isNotNull()
     }
 
+    @Test fun `worker settings are validated`() {
+        val batches = DueDeletionBatchService(jdbc, ProfileFinalizationService(jdbc, transactions, mapper, "test", clock), clock)
+        val notices = ProfileNoticeService(jdbc, transactions, mapper, "test", clock)
+
+        assertThatThrownBy { MaintenanceWorker(jdbc, lease, batches, notices, clock, batchLimit = 0) }
+            .isInstanceOf(IllegalArgumentException::class.java)
+        assertThatThrownBy { MaintenanceWorker(jdbc, lease, batches, notices, clock, maxPages = 0) }
+            .isInstanceOf(IllegalArgumentException::class.java)
+        assertThatThrownBy { MaintenanceWorker(jdbc, lease, batches, notices, clock, maxFinalizations = 0) }
+            .isInstanceOf(IllegalArgumentException::class.java)
+    }
+
     @Test fun `a lease duration must be positive`() {
         assertThatThrownBy { lease.tryAcquire("maintenance", Duration.ZERO) }
             .isInstanceOf(IllegalArgumentException::class.java)
@@ -215,6 +237,7 @@ class MaintenanceWorkerTest {
     @Test fun `a healthy configured backup and a completed sweep do not alert`() {
         backup.configured = true
         backup.failed = false
+        exports.lastCompletedAt = clock.instant()
         retention.record(com.vik.ums.retention.RetentionReport(listOf(
             com.vik.ums.retention.SweepClassResult("patch_receipts", 1, 0, 0))))
 
@@ -222,6 +245,19 @@ class MaintenanceWorkerTest {
 
         assertThat(alertSignals.snapshot?.backupFailed).isFalse()
         assertThat(alertSignals.snapshot?.failedRetentionSweeps).isZero()
+        assertThat(alertSignals.snapshot?.failedExportCleanup).isZero()
+    }
+
+    @Test fun `a content-blocked app is reported blocked without stopping the pass`() {
+        requestDeletion()
+        clock.advance(Duration.ofDays(30))
+        jdbc.update("update ums_profile_bindings set avatar_reference = 'asset'")
+
+        val result = worker.run()
+
+        assertThat(result.blocked).isEqualTo(1)
+        assertThat(result.skipped).isFalse()
+        assertThat(lifecycle()).isEqualTo("DELETION_PENDING")
     }
 
     private class AdjustableClock(@Volatile private var now: Instant) : Clock() {

@@ -12,7 +12,7 @@ gauge, or page.
 | `ums.alert.overdue.beyond.objective` | pending requests more than 24 h past deadline | any |
 | `ums.alert.poisoned.outbox` | quarantined outbox facts | any |
 | `ums.alert.ingestion.quarantine.open` | open ingestion quarantine | any |
-| `ums.alert.failed.retention` | failed deletes in the last sweep | any |
+| `ums.alert.failed.retention` | failed deletes, or the sweep has not completed | any after a 2-hour startup grace |
 | `ums.alert.backup.failed` | failed, stale, or unconfigured backup | any |
 | `ums.alert.export.cleanup.failed` | the last export cleanup pass failed | any |
 | `ums.alert.authorization.new` | caller denials | 5 since the previous check |
@@ -23,8 +23,8 @@ gauge, or page.
 
 1. Read `ums.alert.overdue.erasures` and the maintenance-worker log; both carry counts only.
 2. Check the maintenance worker is enabled (`ums.maintenance.enabled`) and that its lease is not
-   stuck: `ums_worker_lease.leased_until` is when the current holder may be replaced (up to ten
-   minutes after it acquired the pass).
+   stuck: the holder renews `ums_worker_lease.leased_until` page by page, so a crashed worker's
+   lease expires at most ten minutes after its last renewal.
 3. Read the maintenance-worker log: it prints finalized, blocked, and retryable counts. A
    `BLOCKED` outcome is usually a content-authority obligation waiting for the content owner.
 4. There is no manual batch endpoint; the worker is the only entry point. If it is running and

@@ -50,6 +50,7 @@ class OperationsConfiguration {
         MaintenanceWorker(jdbc, lease, batches, notices, clock,
             batchLimit = environment.getProperty("ums.maintenance.batch-limit", "50").toInt(),
             maxPages = environment.getProperty("ums.maintenance.max-pages", "20").toInt(),
+            maxFinalizations = environment.getProperty("ums.maintenance.max-finalizations", "200").toInt(),
             noticeLimit = environment.getProperty("ums.maintenance.notice-limit", "100").toInt())
 
     @Bean
