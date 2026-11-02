@@ -3,6 +3,7 @@ package com.vik.ums.privacy
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.vik.ums.profiles.AppScope
 import com.vik.ums.profiles.Lifecycle
+import com.vik.ums.profiles.ProfileField
 import com.vik.ums.profiles.ProfileFieldsPersistence
 import com.vik.ums.profiles.ProfilePersistence
 import com.vik.ums.profiles.ProfileScope
@@ -16,6 +17,7 @@ import java.sql.Timestamp
 import java.time.Clock
 import java.time.Duration
 import java.time.Instant
+import java.time.temporal.ChronoUnit
 import java.util.Base64
 import java.util.UUID
 
@@ -43,13 +45,16 @@ class ProfileExportService(
             and actor_reference = ? and idempotency_key = ?""",
             { rs, _ -> rs.getObject(1, UUID::class.java) },
             scope.issuerEnvironmentRef, scope.appReference, scope.subjectReference,
-            authority.actorReference, idempotencyKey).singleOrNull()?.let {
-            return@execute ExportStatus(it, "1", "ACCEPTED")
+            authority.actorReference, idempotencyKey).singleOrNull()?.let { existing ->
+            // A replay reports what the original export is now, not what it was when accepted.
+            return@execute ExportStatus(existing, "1", load(scope, existing).state.openStatus())
         }
-        val state = bindings.binding(scope)
-        check(state?.lifecycle == Lifecycle.ACTIVE) { "Profile is unavailable" }
+        // The registered policy row is the shared application lock: an export cannot be built
+        // from a binding that a concurrent deletion, closure, or expiry is about to replace.
         val policy = lockedPolicy(jdbc, mapper, AppScope(scope.issuerEnvironmentRef, scope.appReference))
             ?: throw IllegalStateException("Profile capability is unavailable")
+        val state = bindings.binding(scope)
+        check(state?.lifecycle == Lifecycle.ACTIVE) { "Profile is unavailable" }
         val present = fields.fields(scope)
         val readiness = if (policy.requiredFields.all { it in present.keys }) Readiness.PROFILE_READY
         else Readiness.PROFILE_REQUIRED
@@ -58,7 +63,9 @@ class ProfileExportService(
             profileRevision = state.profileRevision!!,
             readiness = readiness.name,
             lifecycle = state.lifecycle.name,
-            fields = present.mapKeys { it.key.wireName },
+            // An allowlist, not "whatever the profile happens to hold": a new profile field
+            // must never join an export copy implicitly.
+            fields = present.filterKeys { it in EXPORTED_FIELDS }.mapKeys { it.key.wireName },
             generatedAt = now.toString(),
         )
         val reference = UUID.randomUUID()
@@ -82,14 +89,22 @@ class ProfileExportService(
         ExportStatus(reference, "1", stateOf(authority.scope, reference).openStatus())
     }!!
 
+    /**
+     * At most one live capability exists per export. A second capability would make "single
+     * use" true only per token, and it would accumulate redeemable copies of the artifact.
+     */
     fun capability(authority: TrustedExportAuthority, reference: UUID): ExportCapability = transactions.execute {
         authorize(authority)
         val now = clock.instant()
         val export = load(authority.scope, reference)
         check(export.state == ExportState.READY && now.isBefore(export.expiresAt)) { "Export is unavailable" }
+        val outstanding = jdbc.queryForObject("""select count(*) from ums_profile_export_capabilities
+            where export_reference = ? and consumed_at is null and expires_at > ?""",
+            Int::class.java, reference, Timestamp.from(now)) ?: 0
+        check(outstanding == 0) { "A download capability is already outstanding" }
         val token = ByteArray(32).also(random::nextBytes)
             .let { Base64.getUrlEncoder().withoutPadding().encodeToString(it) }
-        val expiresAt = now.plus(CAPABILITY_LIFETIME)
+        val expiresAt = now.plus(CAPABILITY_LIFETIME).truncatedTo(ChronoUnit.MICROS)
         jdbc.update("""insert into ums_profile_export_capabilities
             (capability_reference, export_reference, token_hash, expires_at, requested_at)
             values (?, ?, ?, ?, ?)""",
@@ -97,17 +112,21 @@ class ProfileExportService(
         ExportCapability(reference, token, expiresAt.toString())
     }!!
 
-    /** The capability is the authority: no caller identity is needed, only the single-use token. */
-    fun download(token: String): ExportArtifact = transactions.execute {
+    /**
+     * The capability authorizes the read; the caller's scope must still match the export, so a
+     * token stolen by another app subject cannot be redeemed.
+     */
+    fun download(callerScope: ProfileScope, token: String): ExportArtifact = transactions.execute {
         val now = clock.instant()
-        val row = jdbc.query("""select c.capability_reference, c.export_reference, e.artifact::text,
-            e.state, e.expires_at
+        val row = jdbc.query("""select c.capability_reference, e.artifact::text
             from ums_profile_export_capabilities c join ums_profile_exports e using (export_reference)
             where c.token_hash = ? and c.consumed_at is null and c.expires_at > ?
-            and e.state = 'READY' and e.expires_at > ?""",
-            { rs, _ -> Triple(rs.getObject(1, UUID::class.java), rs.getString(3), rs.getTimestamp(5).toInstant()) },
-            sha256(token), Timestamp.from(now), Timestamp.from(now)).singleOrNull()
-            ?: throw IllegalStateException("Export download is unavailable")
+            and e.state = 'READY' and e.expires_at > ?
+            and e.issuer_environment_ref = ? and e.app_reference = ? and e.subject_reference = ?""",
+            { rs, _ -> rs.getObject(1, UUID::class.java) to rs.getString(2) },
+            sha256(token), Timestamp.from(now), Timestamp.from(now),
+            callerScope.issuerEnvironmentRef, callerScope.appReference, callerScope.subjectReference)
+            .singleOrNull() ?: throw IllegalStateException("Export download is unavailable")
         val consumed = jdbc.update("""update ums_profile_export_capabilities set consumed_at = ?
             where capability_reference = ? and consumed_at is null""",
             Timestamp.from(now), row.first)
@@ -115,15 +134,18 @@ class ProfileExportService(
         mapper.readValue(row.second, ExportArtifact::class.java)
     }!!
 
-    fun invalidate(scope: ProfileScope): Int =
-        jdbc.update("""update ums_profile_exports set state = 'INVALIDATED', invalidated_at = ?, artifact = null
-            where issuer_environment_ref = ? and app_reference = ? and subject_reference = ? and state = 'READY'""",
-            Timestamp.from(clock.instant()), scope.issuerEnvironmentRef, scope.appReference, scope.subjectReference)
-
-    /** Drops the payload and marks the artifact expired; retained rows carry no personal data. */
-    fun sweep(): Int =
-        jdbc.update("""update ums_profile_exports set state = 'EXPIRED', artifact = null
-            where state = 'READY' and expires_at <= ?""", Timestamp.from(clock.instant()))
+    /**
+     * Drops the payload and marks expired artifacts, then forgets expired capabilities. Safe to
+     * run repeatedly; the scheduler calls it so an artifact dies even when nobody polls it.
+     */
+    fun sweep(): ExportSweep = transactions.execute {
+        val now = Timestamp.from(clock.instant())
+        val expired = jdbc.update("""update ums_profile_exports set state = 'EXPIRED', artifact = null
+            where state = 'READY' and expires_at <= ?""", now)
+        val capabilities = jdbc.update(
+            "delete from ums_profile_export_capabilities where expires_at <= ?", now)
+        ExportSweep(expired, capabilities)
+    }!!
 
     private fun authorize(authority: TrustedExportAuthority) {
         val now = clock.instant()
@@ -133,7 +155,7 @@ class ProfileExportService(
     }
 
     private fun load(scope: ProfileScope, reference: UUID): StoredExport =
-        jdbc.query("""select state, expires_at, artifact::text from ums_profile_exports
+        jdbc.query("""select state, expires_at from ums_profile_exports
             where issuer_environment_ref = ? and app_reference = ? and subject_reference = ?
             and export_reference = ?""",
             { rs, _ -> StoredExport(ExportState.valueOf(rs.getString(1)), rs.getTimestamp(2).toInstant()) },
@@ -159,10 +181,19 @@ class ProfileExportService(
     private companion object {
         val ARTIFACT_LIFETIME: Duration = Duration.ofHours(24)
         val CAPABILITY_LIFETIME: Duration = Duration.ofMinutes(5)
+        val EXPORTED_FIELDS: Set<ProfileField> = setOf(
+            ProfileField.DISPLAY_NAME,
+            ProfileField.AVATAR_REFERENCE,
+            ProfileField.DISPLAY_LOCALE,
+            ProfileField.DISPLAY_TIMEZONE,
+        )
     }
 }
 
-/** Erasure must invalidate any exported copy of the same scope in the same transaction. */
+/**
+ * Erasure and restriction must invalidate any exported copy of the same scope in the same
+ * transaction, so no READY artifact can outlive the profile state it describes.
+ */
 internal fun invalidateExportsFor(jdbc: JdbcTemplate, scope: ProfileScope, now: Instant) {
     jdbc.update("""update ums_profile_exports set state = 'INVALIDATED', invalidated_at = ?, artifact = null
         where issuer_environment_ref = ? and app_reference = ? and subject_reference = ? and state = 'READY'""",

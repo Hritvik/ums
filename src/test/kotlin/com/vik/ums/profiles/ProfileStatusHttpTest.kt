@@ -53,7 +53,8 @@ class ProfileStatusHttpTest {
         val ds = DriverManagerDataSource(postgres.jdbcUrl, postgres.username, postgres.password)
         Flyway.configure().dataSource(ds).load().migrate()
         jdbc = JdbcTemplate(ds)
-        jdbc.execute("""truncate ums_iam_ingestion_quarantine, ums_profile_notice_intents,
+        jdbc.execute("""truncate ums_profile_exports, ums_profile_export_receipts, ums_profile_export_capabilities,
+            ums_iam_ingestion_quarantine, ums_profile_notice_intents,
             ums_profile_erasure_obligations, ums_profile_lifecycle_evidence, ums_profile_privacy_audit,
             ums_profile_privacy_receipts, ums_profile_deletion_requests, ums_profile_deletion_causes,
             ums_iam_activation_owners, ums_iam_onboarding_receipts, ums_iam_subject_mappings,
@@ -449,6 +450,7 @@ class ProfileStatusHttpTest {
 
         mockMvc.perform(get("/api/v1/profile/exports").param("operationReference", reference))
             .andExpect(status().isOk)
+            .andExpect(header().string("Cache-Control", "no-store"))
             .andExpect(jsonPath("$.data.status").value("LOCAL_COMPLETED"))
 
         val capability = mockMvc.perform(post("/api/v1/profile/exports/$reference/downloads"))
@@ -458,13 +460,18 @@ class ProfileStatusHttpTest {
         val token = mapper.readTree(capability)["data"]["token"].asText()
         write("export-download", mapper.writeValueAsString(mapper.readTree(capability)["data"]))
 
-        val artifact = mockMvc.perform(get("/api/v1/profile/exports/downloads/$token"))
+        val artifact = mockMvc.perform(post("/api/v1/profile/exports/downloads")
+            .contentType(MediaType.APPLICATION_JSON)
+            .content("{\"token\":\"$token\"}"))
             .andExpect(status().isOk)
+            .andExpect(header().string("Cache-Control", "no-store"))
             .andExpect(jsonPath("$.data.lifecycle").value("ACTIVE"))
             .andExpect(jsonPath("$.data.generatedAt").exists())
             .andReturn().getResponse().getContentAsString()
         write("export-artifact", mapper.writeValueAsString(mapper.readTree(artifact)["data"]))
-        mockMvc.perform(get("/api/v1/profile/exports/downloads/$token"))
+        mockMvc.perform(post("/api/v1/profile/exports/downloads")
+            .contentType(MediaType.APPLICATION_JSON)
+            .content("{\"token\":\"$token\"}"))
             .andExpect(status().isNotFound)
             .andExpect(jsonPath("$.error.code").value("unavailable"))
     }
@@ -482,8 +489,52 @@ class ProfileStatusHttpTest {
             .andExpect(status().isNotFound)
         mockMvc.perform(post("/api/v1/profile/exports/not-a-uuid/downloads"))
             .andExpect(status().isNotFound)
-        mockMvc.perform(get("/api/v1/profile/exports/downloads/" + "x".repeat(43)))
+        mockMvc.perform(post("/api/v1/profile/exports/downloads")
+            .contentType(MediaType.APPLICATION_JSON)
+            .content("{\"token\":\"" + "x".repeat(43) + "\"}"))
             .andExpect(status().isNotFound)
+            .andExpect(jsonPath("$.error.code").value("unavailable"))
+    }
+
+    @Test fun `an unauthenticated export request is refused`() {
+        mockMvc.perform(post("/api/v1/profile/exports").header("Idempotency-Key", uuid()))
+            .andExpect(status().isUnauthorized)
+        mockMvc.perform(post("/api/v1/profile/exports/${uuid()}/downloads"))
+            .andExpect(status().isUnauthorized)
+        mockMvc.perform(post("/api/v1/profile/exports/downloads")
+            .contentType(MediaType.APPLICATION_JSON)
+            .content("{\"token\":\"" + "x".repeat(43) + "\"}"))
+            .andExpect(status().isUnauthorized)
+    }
+
+    @Test fun `a download without a bounded JSON body is refused`() {
+        authenticate()
+        mockMvc.perform(post("/api/v1/profile/exports/downloads"))
+            .andExpect(status().isBadRequest)
+        mockMvc.perform(post("/api/v1/profile/exports/downloads")
+            .contentType(MediaType.APPLICATION_JSON)
+            .content("{\"token\":\"" + "x".repeat(5000) + "\"}"))
+            .andExpect(status().isBadRequest)
+    }
+
+    @Test fun `a malformed export request is refused before the service`() {
+        authenticate()
+        mockMvc.perform(get("/api/v1/profile/exports"))
+            .andExpect(status().isBadRequest)
+            .andExpect(header().string("Cache-Control", "no-store"))
+            .andExpect(jsonPath("$.error.code").value("malformed_input"))
+        mockMvc.perform(get("/api/v1/profile/exports").param("operationReference", "not-a-uuid"))
+            .andExpect(status().isBadRequest)
+        mockMvc.perform(post("/api/v1/profile/exports"))
+            .andExpect(status().isBadRequest)
+        mockMvc.perform(post("/api/v1/profile/exports/downloads")
+            .contentType(MediaType.APPLICATION_JSON)
+            .content("{\"token\":\"short\"}"))
+            .andExpect(status().isBadRequest)
+        mockMvc.perform(post("/api/v1/profile/exports/downloads")
+            .contentType(MediaType.APPLICATION_JSON)
+            .content("{\"token\":\"" + "x".repeat(43) + "\",\"extra\":true}"))
+            .andExpect(status().isBadRequest)
     }
 
     @Test fun `an unauthenticated request is refused before the handler`() {

@@ -822,7 +822,7 @@
     "/api/v1/profile/exports": {
       "post": {
         "summary": "Request scoped export with recent Strong authority",
-        "description": "Contract proposal only; endpoint is not implemented. Exact app, target, actor, lifecycle and current authority checks are mandatory.",
+        "description": "Implemented. Recent Strong authority is mandatory; the body is empty and the Idempotency-Key header is the only command input.",
         "security": [
           {
             "umsBearer": []
@@ -939,16 +939,6 @@
             }
           }
         },
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "./schemas/privacy-command.json"
-              }
-            }
-          }
-        },
         "parameters": [
           {
             "name": "Idempotency-Key",
@@ -963,7 +953,7 @@
       },
       "get": {
         "summary": "Inspect one own privacy operation",
-        "description": "Contract proposal only; endpoint is not implemented. Exact app, target, actor, lifecycle and current authority checks are mandatory.",
+        "description": "Implemented. Reports the caller's own export operation; unknown references are unavailable.",
         "security": [
           {
             "umsBearer": []
@@ -1651,18 +1641,39 @@
               }
             }
           }
-        }
+        },
+        "parameters": [
+          {
+            "name": "exportReference",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ]
       }
     },
-    "/api/v1/profile/exports/downloads/{token}": {
-      "get": {
+    "/api/v1/profile/exports/downloads": {
+      "post": {
         "summary": "Consume an export download capability",
-        "description": "Implemented. The capability is single-use; an expired, consumed, invalidated or erased export is unavailable.",
+        "description": "Implemented. The capability travels in the body, never in a URL, and is single-use; expired, consumed, invalidated or erased exports are unavailable. The caller must be the same app subject as the export.",
         "security": [
           {
             "umsBearer": []
           }
         ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "./schemas/export-download-request.json"
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "description": "Private response; Cache-Control: no-store required.",
@@ -1683,26 +1694,6 @@
               }
             }
           },
-          "401": {
-            "description": "Invalid authentication",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "./schemas/safe-error.json"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Unavailable target (non-enumerating)",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "./schemas/safe-error.json"
-                }
-              }
-            }
-          },
           "400": {
             "description": "Malformed input",
             "content": {
@@ -1713,8 +1704,28 @@
               }
             }
           },
+          "401": {
+            "description": "Invalid authentication",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./schemas/safe-error.json"
+                }
+              }
+            }
+          },
           "403": {
             "description": "Forbidden action",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./schemas/safe-error.json"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Unavailable target (non-enumerating)",
             "content": {
               "application/json": {
                 "schema": {

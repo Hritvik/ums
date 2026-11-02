@@ -10,9 +10,11 @@ data class ProfileScope(val issuerEnvironmentRef: UUID, val appReference: UUID, 
     fun application(): AppScope = AppScope(issuerEnvironmentRef, appReference)
 }
 
-enum class ProfileField(@get:JsonValue val wireName: String) {
-    DISPLAY_NAME("displayName"), AVATAR_REFERENCE("avatarReference"),
-    DISPLAY_LOCALE("displayLocale"), DISPLAY_TIMEZONE("displayTimezone"),
+enum class ProfileField(@get:JsonValue val wireName: String, val column: String) {
+    DISPLAY_NAME("displayName", "display_name"),
+    AVATAR_REFERENCE("avatarReference", "avatar_reference"),
+    DISPLAY_LOCALE("displayLocale", "display_locale"),
+    DISPLAY_TIMEZONE("displayTimezone", "display_timezone"),
 }
 enum class Readiness { PROFILE_REQUIRED, PROFILE_READY }
 enum class Lifecycle { ACTIVE, CLOSED, DELETION_PENDING, ERASED }

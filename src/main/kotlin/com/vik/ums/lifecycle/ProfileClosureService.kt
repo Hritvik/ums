@@ -6,6 +6,7 @@ import com.vik.ums.profiles.Lifecycle
 import com.vik.ums.profiles.ProfilePersistence
 import com.vik.ums.profiles.ProfileStateEvents
 import com.vik.ums.profiles.lockedPolicy
+import com.vik.ums.privacy.invalidateExportsFor
 import org.springframework.jdbc.core.JdbcTemplate
 import org.springframework.transaction.support.TransactionTemplate
 import java.time.Clock
@@ -54,6 +55,8 @@ class ProfileClosureService(
         val closureReference = UUID.randomUUID()
         if (persistence.closeActive(fact.scope, closedAt, retainUntil, closureReference)) {
             val after = bindings.binding(fact.scope)!!
+            // Closure is a restriction: an exported copy must not outlive it.
+            invalidateExportsFor(jdbc, fact.scope, clock.instant())
             persistence.recordEvidence(fact.scope, "CLOSED", after.bindingRevision.toLong(), closedAt, retainUntil,
                 clock.instant(), fact.eventId, fact.correlationId)
             events.emit(after, "CLOSED", fact.eventId, fact.correlationId)
@@ -63,6 +66,7 @@ class ProfileClosureService(
         // A deletion cause already restricts this profile. Retention is independent evidence:
         // it never changes lifecycle, revision, readiness, or the emitted stream.
         persistence.recordRetention(fact.scope, closedAt, retainUntil, closureReference)
+        invalidateExportsFor(jdbc, fact.scope, clock.instant())
         persistence.recordEvidence(fact.scope, "CLOSED", current.bindingRevision.toLong(), closedAt, retainUntil,
             clock.instant(), fact.eventId, fact.correlationId)
         ClosureResult(ClosureOutcome.RESTRICTED_RETAINED, current, retainUntil)

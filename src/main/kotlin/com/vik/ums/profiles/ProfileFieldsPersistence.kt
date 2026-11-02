@@ -7,7 +7,8 @@ internal class ProfileFieldsPersistence(private val jdbc: JdbcTemplate) {
     fun fields(scope: ProfileScope): Map<ProfileField, String> = jdbc.query("""select display_name, avatar_reference,
         display_locale, display_timezone from ums_profile_bindings where issuer_environment_ref = ?
         and app_reference = ? and subject_reference = ?""", { rs, _ ->
-            ProfileField.entries.mapIndexedNotNull { index, field -> rs.getString(index + 1)?.let { field to it } }.toMap()
+            // Read by column name so a future field cannot silently take another field's value.
+            ProfileField.entries.mapNotNull { field -> rs.getString(field.column)?.let { field to it } }.toMap()
         }, scope.issuerEnvironmentRef, scope.appReference, scope.subjectReference).single()
 
     fun scope(app: AppScope, reference: UUID): ProfileScope? = jdbc.query("""select subject_reference

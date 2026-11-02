@@ -27,6 +27,12 @@ data class ExportCapability(
     val expiresAt: String,
 )
 
+/** One sweep pass: expired artifacts and the capabilities that were left behind. */
+data class ExportSweep(val expiredExports: Int, val purgedCapabilities: Int)
+
+/** The capability is a bearer token; it travels in a body so it never becomes a URL or log entry. */
+data class ExportDownloadCommand(val token: String)
+
 /** The downloadable artifact: only UMS-owned display data and lifecycle facts. */
 data class ExportArtifact(
     val profileRevision: String,

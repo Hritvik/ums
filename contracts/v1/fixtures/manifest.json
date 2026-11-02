@@ -368,5 +368,15 @@
     "file": "export-artifact.json",
     "schema": "export-artifact.json",
     "valid": true
+  },
+  {
+    "file": "export-download-request.json",
+    "schema": "export-download-request.json",
+    "valid": true
+  },
+  {
+    "file": "export-download-request-invalid-short.json",
+    "schema": "export-download-request.json",
+    "valid": false
   }
 ]

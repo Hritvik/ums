@@ -1,6 +1,10 @@
 package com.vik.ums.privacy
 
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
+import com.vik.ums.lifecycle.ProfileClosureService
+import com.vik.ums.lifecycle.ProfileExpiryService
+import com.vik.ums.lifecycle.TrustedClosureFact
+import com.vik.ums.lifecycle.TrustedExpiryFact
 import com.vik.ums.profiles.*
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
@@ -31,6 +35,10 @@ class ProfileExportTest {
     private lateinit var jdbc: JdbcTemplate
     private lateinit var exports: ProfileExportService
     private lateinit var deletion: ProfileDeletionService
+    private lateinit var finalizer: ProfileFinalizationService
+    private lateinit var global: ProfileGlobalDeletionService
+    private lateinit var closure: ProfileClosureService
+    private lateinit var expiry: ProfileExpiryService
 
     private fun authority(strong: Boolean = true, authenticatedAt: Instant = clock.instant()) =
         TrustedExportAuthority(scope, UUID.randomUUID(), authenticatedAt, strong,
@@ -53,7 +61,19 @@ class ProfileExportTest {
         jdbc.update("update ums_profile_bindings set display_name = 'Ada'")
         exports = ProfileExportService(jdbc, tx, mapper, clock)
         deletion = ProfileDeletionService(jdbc, tx, mapper, "test", clock, Duration.ofMinutes(5))
+        finalizer = ProfileFinalizationService(jdbc, tx, mapper, "test", clock)
+        global = ProfileGlobalDeletionService(jdbc, tx, mapper, "test", clock)
+        closure = ProfileClosureService(jdbc, tx, mapper, "test", clock)
+        expiry = ProfileExpiryService(jdbc, tx, mapper, "test", clock)
     }
+
+    private fun ready(): UUID = exports.request(authority(), UUID.randomUUID()).operationReference
+
+    private fun state(): String = jdbc.queryForObject("select state from ums_profile_exports",
+        String::class.java)!!
+
+    private fun payloadDropped(): Boolean = jdbc.queryForObject(
+        "select artifact is null from ums_profile_exports", Boolean::class.java) == true
 
     @Test fun `a request produces a closed artifact and replays idempotently`() {
         val key = UUID.randomUUID()
@@ -67,61 +87,193 @@ class ProfileExportTest {
         val artifact = mapper.readTree(jdbc.queryForObject(
             "select artifact::text from ums_profile_exports", String::class.java)!!)
         assertThat(artifact["fields"]["displayName"].asText()).isEqualTo("Ada")
+        assertThat(artifact["fields"].fieldNames().asSequence().toSet())
+            .isEqualTo(setOf("displayName"))
         assertThat(artifact["lifecycle"].asText()).isEqualTo("ACTIVE")
         assertThat(artifact["profileRevision"].asText()).isEqualTo("1")
         listOf("appSubject", "subjectReference", "email", "phone", "token").forEach {
             assertThat(artifact.has(it)).isFalse()
         }
-        assertThat(exports.status(authority(), first.operationReference).status).isEqualTo("LOCAL_COMPLETED")
+        assertThat(exports.status(actor, first.operationReference).status).isEqualTo("LOCAL_COMPLETED")
     }
 
-    @Test fun `a capability downloads exactly once`() {
-        val export = exports.request(authority(), UUID.randomUUID())
-        val capability = exports.capability(authority(), export.operationReference)
-
-        val artifact = exports.download(capability.token)
-        assertThat(artifact.fields["displayName"]).isEqualTo("Ada")
-
-        assertThatThrownBy { exports.download(capability.token) }.isInstanceOf(IllegalStateException::class.java)
-    }
-
-    @Test fun `a capability expires after five minutes`() {
-        val export = exports.request(authority(), UUID.randomUUID())
-        val capability = exports.capability(authority(), export.operationReference)
-        clock.advance(Duration.ofMinutes(5))
-
-        assertThatThrownBy { exports.download(capability.token) }.isInstanceOf(IllegalStateException::class.java)
-    }
-
-    @Test fun `an export expires after twenty four hours and drops its payload`() {
-        val export = exports.request(authority(), UUID.randomUUID())
-        val capability = exports.capability(authority(), export.operationReference)
-        clock.advance(Duration.ofHours(24))
-
-        assertThat(exports.status(authority(), export.operationReference).status).isEqualTo("EXPIRED")
-        assertThat(jdbc.queryForObject("select artifact is null from ums_profile_exports", Boolean::class.java)).isTrue()
-        assertThatThrownBy { exports.download(capability.token) }.isInstanceOf(IllegalStateException::class.java)
-    }
-
-    @Test fun `restriction invalidates an outstanding export`() {
-        val export = exports.request(authority(), UUID.randomUUID())
-        val capability = exports.capability(authority(), export.operationReference)
+    @Test fun `a replay reports the export as it is now, not as it was accepted`() {
+        val key = UUID.randomUUID()
+        val actor = authority()
+        val first = exports.request(actor, key)
+        exports.capability(actor, first.operationReference)
         deletion.request(TrustedPrivacyAuthority(scope, UUID.randomUUID(), PrivacyPurpose.REQUEST_DELETION,
             clock.instant(), true, clock.instant().plus(Duration.ofMinutes(10))),
             DeletionRequestCommand(UUID.randomUUID(), 1, "export"))
 
-        assertThat(exports.status(authority(), export.operationReference).status).isEqualTo("FAILED")
-        assertThatThrownBy { exports.download(capability.token) }.isInstanceOf(IllegalStateException::class.java)
-        assertThat(jdbc.queryForObject("select count(*) from ums_profile_exports where artifact is null",
-            Int::class.java)).isEqualTo(1)
+        assertThat(exports.request(actor, key).status).isEqualTo("FAILED")
+    }
+
+    @Test fun `a capability downloads exactly once`() {
+        val export = ready()
+        val capability = exports.capability(authority(), export)
+
+        val artifact = exports.download(scope, capability.token)
+        assertThat(artifact.fields["displayName"]).isEqualTo("Ada")
+
+        assertThatThrownBy { exports.download(scope, capability.token) }
+            .isInstanceOf(IllegalStateException::class.java)
+    }
+
+    @Test fun `only one live capability exists at a time`() {
+        val export = ready()
+        exports.capability(authority(), export)
+
+        assertThatThrownBy { exports.capability(authority(), export) }
+            .isInstanceOf(IllegalStateException::class.java)
+    }
+
+    @Test fun `another subject cannot redeem someone else's capability`() {
+        val export = ready()
+        val capability = exports.capability(authority(), export)
+        val other = ProfileScope(scope.issuerEnvironmentRef, scope.appReference, UUID.randomUUID())
+
+        assertThatThrownBy { exports.download(other, capability.token) }
+            .isInstanceOf(IllegalStateException::class.java)
+        assertThat(exports.download(scope, capability.token).fields["displayName"]).isEqualTo("Ada")
+    }
+
+    @Test fun `a capability expires after five minutes`() {
+        val export = ready()
+        val capability = exports.capability(authority(), export)
+        clock.advance(Duration.ofMinutes(5))
+
+        assertThatThrownBy { exports.download(scope, capability.token) }
+            .isInstanceOf(IllegalStateException::class.java)
+    }
+
+    @Test fun `an export expires after twenty four hours and drops its payload`() {
+        val export = ready()
+        val capability = exports.capability(authority(), export)
+        clock.advance(Duration.ofHours(24))
+
+        assertThat(exports.status(authority(), export).status).isEqualTo("EXPIRED")
+        assertThat(payloadDropped()).isTrue()
+        assertThatThrownBy { exports.download(scope, capability.token) }
+            .isInstanceOf(IllegalStateException::class.java)
+    }
+
+    @Test fun `the sweep expires unattended exports and purges their capabilities`() {
+        ready()
+        exports.capability(authority(), ready())
+        clock.advance(Duration.ofHours(25))
+
+        val sweep = exports.sweep()
+
+        assertThat(sweep.expiredExports).isEqualTo(2)
+        assertThat(sweep.purgedCapabilities).isEqualTo(1)
+        assertThat(jdbc.queryForObject("select count(*) from ums_profile_exports where state = 'EXPIRED'",
+            Int::class.java)).isEqualTo(2)
+        assertThat(jdbc.queryForObject("select count(*) from ums_profile_exports where artifact is not null",
+            Int::class.java)).isEqualTo(0)
+    }
+
+    @Test fun `restriction invalidates an outstanding export`() {
+        val export = ready()
+        val capability = exports.capability(authority(), export)
+        deletion.request(TrustedPrivacyAuthority(scope, UUID.randomUUID(), PrivacyPurpose.REQUEST_DELETION,
+            clock.instant(), true, clock.instant().plus(Duration.ofMinutes(10))),
+            DeletionRequestCommand(UUID.randomUUID(), 1, "export"))
+
+        assertThat(exports.status(authority(), export).status).isEqualTo("FAILED")
+        assertThatThrownBy { exports.download(scope, capability.token) }
+            .isInstanceOf(IllegalStateException::class.java)
+        assertThat(state()).isEqualTo("INVALIDATED")
+        assertThat(payloadDropped()).isTrue()
+    }
+
+    @Test fun `finalization invalidates an outstanding export`() {
+        val export = ready()
+        val accepted = deletion.request(TrustedPrivacyAuthority(scope, UUID.randomUUID(),
+            PrivacyPurpose.REQUEST_DELETION, clock.instant(), true, clock.instant().plus(Duration.ofMinutes(10))),
+            DeletionRequestCommand(UUID.randomUUID(), 1, "export"))
+        clock.advance(Duration.ofDays(30))
+
+        finalizer.finalize(TrustedMaintenanceAuthority(app, UUID.randomUUID(),
+            MaintenancePurpose.FINALIZE_APP_DELETION), scope, accepted.operationReference, "export")
+
+        assertThat(exports.status(authority(), export).status).isEqualTo("FAILED")
+        assertThat(state()).isEqualTo("INVALIDATED")
+        assertThat(payloadDropped()).isTrue()
+    }
+
+    @Test fun `an IAM-global pending fact invalidates an outstanding export`() {
+        val export = ready()
+
+        global.applyPending(TrustedProviderAuthority(app, UUID.randomUUID()),
+            GlobalPendingFact(scope, 1, clock.instant(), clock.instant().plus(Duration.ofDays(30)),
+                UUID.randomUUID(), "export"))
+
+        assertThat(exports.status(authority(), export).status).isEqualTo("FAILED")
+        assertThat(payloadDropped()).isTrue()
+    }
+
+    @Test fun `closure invalidates an outstanding export and expiry keeps it revoked`() {
+        val export = ready()
+        val capability = exports.capability(authority(), export)
+
+        closure.close(TrustedClosureFact(scope, clock.instant(), UUID.randomUUID(), "export"))
+        assertThat(exports.status(authority(), export).status).isEqualTo("FAILED")
+        assertThat(payloadDropped()).isTrue()
+        assertThatThrownBy { exports.download(scope, capability.token) }
+            .isInstanceOf(IllegalStateException::class.java)
+
+        clock.advance(Duration.ofDays(91))
+        expiry.expire(TrustedExpiryFact(scope, UUID.randomUUID(), "export"))
+        assertThat(state()).isEqualTo("INVALIDATED")
+        assertThat(payloadDropped()).isTrue()
+    }
+
+    @Test fun `a closed profile cannot be exported`() {
+        closure.close(TrustedClosureFact(scope, clock.instant(), UUID.randomUUID(), "export"))
+
+        assertThatThrownBy { exports.request(authority(), UUID.randomUUID()) }
+            .isInstanceOf(IllegalStateException::class.java)
+    }
+
+    @Test fun `a capability cannot be issued for a revoked export`() {
+        val export = ready()
+        deletion.request(TrustedPrivacyAuthority(scope, UUID.randomUUID(), PrivacyPurpose.REQUEST_DELETION,
+            clock.instant(), true, clock.instant().plus(Duration.ofMinutes(10))),
+            DeletionRequestCommand(UUID.randomUUID(), 1, "export"))
+
+        assertThatThrownBy { exports.capability(authority(), export) }
+            .isInstanceOf(IllegalStateException::class.java)
+    }
+
+    @Test fun `the scheduler sweeps quietly when nothing is due`() {
+        val scheduler = ProfileExportSweepScheduler(exports)
+        scheduler.sweep()
+
+        exports.capability(authority(), ready())
+        scheduler.sweep()
+        assertThat(state()).isEqualTo("READY")
     }
 
     @Test fun `weak or stale authority cannot request an export`() {
         assertThatThrownBy { exports.request(authority(strong = false), UUID.randomUUID()) }
             .isInstanceOf(IllegalArgumentException::class.java)
         clock.advance(Duration.ofMinutes(10))
-        assertThatThrownBy { exports.request(authority(authenticatedAt = clock.instant().minus(Duration.ofMinutes(10))), UUID.randomUUID()) }
-            .isInstanceOf(IllegalArgumentException::class.java)
+        assertThatThrownBy {
+            exports.request(authority(authenticatedAt = clock.instant().minus(Duration.ofMinutes(10))), UUID.randomUUID())
+        }.isInstanceOf(IllegalArgumentException::class.java)
+        assertThatThrownBy {
+            exports.request(authority(authenticatedAt = clock.instant().plusSeconds(1)), UUID.randomUUID())
+        }.isInstanceOf(IllegalArgumentException::class.java)
+    }
+
+    @Test fun `an unknown export is unavailable`() {
+        assertThatThrownBy { exports.status(authority(), UUID.randomUUID()) }
+            .isInstanceOf(IllegalStateException::class.java)
+        assertThatThrownBy { exports.capability(authority(), UUID.randomUUID()) }
+            .isInstanceOf(IllegalStateException::class.java)
+        assertThatThrownBy { exports.download(scope, "x".repeat(43)) }
+            .isInstanceOf(IllegalStateException::class.java)
     }
 
     private class AdjustableClock(@Volatile private var now: Instant) : Clock() {
