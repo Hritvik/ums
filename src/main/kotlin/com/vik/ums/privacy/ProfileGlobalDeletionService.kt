@@ -13,6 +13,7 @@ import com.vik.ums.profiles.ProfileScope
 import com.vik.ums.profiles.ProfileStateEvents
 import com.vik.ums.profiles.Readiness
 import com.vik.ums.profiles.lockedPolicy
+import com.vik.ums.recovery.ErasureFeed
 import org.springframework.jdbc.core.JdbcTemplate
 import org.springframework.transaction.support.TransactionTemplate
 import java.sql.Timestamp
@@ -37,6 +38,7 @@ class ProfileGlobalDeletionService(
     private val persistence = PrivacyPersistence(jdbc)
     private val lifecycle = LifecyclePersistence(jdbc)
     private val events = ProfileStateEvents(jdbc, mapper, environment, clock)
+    private val erasureJournal = ErasureFeed(jdbc)
 
     fun applyPending(authority: TrustedProviderAuthority, fact: GlobalPendingFact): GlobalDeletionResult =
         transactions.execute {
@@ -129,6 +131,8 @@ class ProfileGlobalDeletionService(
                     current.bindingRevision.toLong())) {
                 return@execute GlobalDeletionResult(GlobalDeletionOutcome.STALE, current)
             }
+            erasureJournal.record(fact.scope, current.profileReference!!, current.generation!!.toLong(),
+                revision, clock.instant(), "IAM_GLOBAL", fact.eventId)
             deleteAllCauses(fact.scope)
             markPendingRequestsSuperseded(fact.scope)
             lifecycle.recordErasedObligation(fact.scope, "IAM_GLOBAL", fact.eventId, current.profileReference!!,

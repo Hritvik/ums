@@ -3,6 +3,7 @@ package com.vik.ums.lifecycle
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.vik.ums.notices.suppressNotices
 import com.vik.ums.privacy.invalidateExportsFor
+import com.vik.ums.recovery.ErasureFeed
 import com.vik.ums.profiles.Lifecycle
 import com.vik.ums.profiles.ProfilePersistence
 import com.vik.ums.profiles.ProfileScope
@@ -33,6 +34,7 @@ class ProfileExpiryService(
     private val bindings = ProfilePersistence(jdbc)
     private val persistence = LifecyclePersistence(jdbc)
     private val events = ProfileStateEvents(jdbc, mapper, environment, clock)
+    private val erasureJournal = ErasureFeed(jdbc)
 
     fun expire(fact: TrustedExpiryFact): ExpiryResult = transactions.execute {
         // The registered policy row is the shared application lock. Adoption is not
@@ -75,6 +77,8 @@ class ProfileExpiryService(
                     mapOf("type" to "IAM_GLOBAL", "reference" to it.requestReference.toString())
                 },
             ))
+        erasureJournal.record(fact.scope, profileReference, generation.toLong(), revision, now,
+            "CLOSURE_EXPIRY", null)
         persistence.clearCauses(fact.scope)
         jdbc.update("""update ums_profile_deletion_requests set status = 'SUPERSEDED',
             operation_revision = operation_revision + 1

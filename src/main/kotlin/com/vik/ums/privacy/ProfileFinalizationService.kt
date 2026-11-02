@@ -2,6 +2,7 @@ package com.vik.ums.privacy
 
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.vik.ums.notices.suppressNotices
+import com.vik.ums.recovery.ErasureFeed
 import com.vik.ums.profiles.*
 import org.springframework.jdbc.core.JdbcTemplate
 import org.springframework.transaction.support.TransactionTemplate
@@ -20,6 +21,7 @@ class ProfileFinalizationService(
     private val environment: String, private val clock: Clock,
 ) {
     private val bindings = ProfilePersistence(jdbc)
+    private val erasureJournal = ErasureFeed(jdbc)
     private val persistence = PrivacyPersistence(jdbc)
     private val events = ProfileStateEvents(jdbc, mapper, environment, clock)
 
@@ -50,6 +52,8 @@ class ProfileFinalizationService(
                 where issuer_environment_ref = ? and app_reference = ? and subject_reference = ?""", Boolean::class.java,
                 scope.issuerEnvironmentRef, scope.appReference, scope.subjectReference) == true, FinalizationBlockReason.CONTENT_AUTHORITY_UNAVAILABLE)
             erase(scope, request, before)
+            erasureJournal.record(scope, before.profileReference!!, before.generation!!.toLong(),
+                Math.addExact(before.bindingRevision.toLong(), 1), now, "APP_DELETION", reference)
             invalidateExportsFor(jdbc, scope, now)
             suppressNotices(jdbc, mapper, environment, scope, correlationId, now)
             val after = bindings.binding(scope)!!

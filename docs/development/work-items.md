@@ -419,7 +419,7 @@ Five provider inputs do not exist yet and are carried as named gaps rather than 
 
 **Summary.** If a backup taken before a deletion is restored, the deleted data must not come back. That is the hardest promise in the design and it cannot be met by the database alone. This item establishes independently durable deletion evidence and proves it with an actual restore.
 
-**Status.** Planned — not started.
+**Status.** Green — implemented and verified; awaiting review.
 
 **Work to be done.**
 - Decide and implement how acknowledged lifecycle transitions survive a restore, through an independently durable minimized journal or an equivalent mechanism the chosen infrastructure can actually provide.
