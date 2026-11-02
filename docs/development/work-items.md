@@ -362,7 +362,7 @@ Five provider inputs do not exist yet and are carried as named gaps rather than 
 
 **Summary.** The service records what happened in an outbox, but nothing ever sends it, so no consumer has ever received a real event. This item adds the sender, including what happens when a consumer is down for a long time. It must deliver at least once without inventing exactly-once claims.
 
-**Status.** Planned — not started.
+**Status.** Green — implemented and verified; awaiting review.
 
 **Work to be done.**
 - Add a relay that claims unpublished outbox rows, publishes them in binding-revision order per binding, and marks them published only after the transport accepts them.

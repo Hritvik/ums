@@ -69,8 +69,9 @@ Flyway V1 initializes inbox/outbox infrastructure; V2 adds app adoption/policy,
 profile binding, and source checkpoint storage for the internal provisioning
 slice. V3 adds typed display fields and scoped patch receipts for
 [profile editing](profile-editing.md). Integration tests prove migration replay, database constraints, and
-transaction rollback using real PostgreSQL. This does not implement a relay,
-producer authentication, HTTP event ingestion, or durable privacy recovery.
+transaction rollback using real PostgreSQL. [The outbox relay](outbox-relay.md)
+drains those rows at least once; producer authentication, HTTP event ingestion,
+and durable privacy recovery remain gates.
 JSON payload storage is internal infrastructure, not permission to accept
 arbitrary event payloads at an API.
 

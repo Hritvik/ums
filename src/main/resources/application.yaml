@@ -29,6 +29,11 @@ management:
     health:
       show-details: never
 ums:
+  outbox:
+    relay:
+      enabled: ${UMS_OUTBOX_RELAY_ENABLED:false}
+      # consumer-uri, interval, batch-size, max-attempts, backoff-base, backoff-max and lease
+      # are documented in docs/development/outbox-relay.md.
   security:
     issuer: ${UMS_IAM_ISSUER:}
     jwk-set-uri: ${UMS_IAM_JWK_SET_URI:}

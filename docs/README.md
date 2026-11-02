@@ -14,6 +14,7 @@ identity/authentication; products retain their business data and permissions.
 - [Local erasure finalization](development/profile-erasure.md): Slice D2 deadline processing, replay fences, and local-completion limits.
 - [App-only deletion](development/profile-deletion.md): Slice D1 requests, cancellation, restricted status, and remaining privacy gates.
 - [Closure and retention](development/profile-closure.md): Slice D4–D5 app departure, the published 90-day deadline, and deliberate reactivation.
+- [Outbox relay](development/outbox-relay.md): Slice F1 at-least-once delivery, ordering, retry, quarantine, and repair.
 - [Scoped exports](development/exports.md): Slice E2 artifact lifetime, single-use capability, and revocation.
 - [Profile HTTP vertical](development/profile-http.md): Slice C3 first shipped status route, caller interceptor, and mapping.
 - [IAM ingestion](development/iam-ingestion.md): Slice C2 strict event intake, producer/app binding, and quarantine.
