@@ -16,15 +16,16 @@ class HttpOutboxTransport(
     private val consumerUri: URI,
     private val timeout: Duration = Duration.ofSeconds(5),
     private val client: HttpClient = HttpClient.newBuilder().connectTimeout(timeout).build(),
+    private val bearerToken: String? = null,
 ) : OutboxTransport {
     init { require(consumerUri.scheme == "http" || consumerUri.scheme == "https") { "Consumer URI must be HTTP(S)" } }
 
     override fun publish(event: OutboxEvent) {
-        val request = HttpRequest.newBuilder(consumerUri)
+        val builder = HttpRequest.newBuilder(consumerUri)
             .timeout(timeout)
             .header("Content-Type", "application/json")
-            .POST(HttpRequest.BodyPublishers.ofString(event.payload))
-            .build()
+        bearerToken?.let { builder.header("Authorization", "Bearer $it") }
+        val request = builder.POST(HttpRequest.BodyPublishers.ofString(event.payload)).build()
         val status = try {
             client.send(request, HttpResponse.BodyHandlers.discarding()).statusCode()
         } catch (unavailable: IOException) {

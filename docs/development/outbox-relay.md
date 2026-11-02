@@ -8,17 +8,26 @@ a visible quarantine, and operator signals.
 
 - A pass claims only the head of each stream — the lowest unpublished `stream_revision` for one
   `(application, stream)` — so a binding can never be delivered out of order.
-- Claiming holds a row lock (`for update … skip locked`) and leases the row for two minutes, so
-  two relay instances or two overlapping passes do not publish the same head simultaneously.
+- Claiming holds a row lock (`for update … skip locked`), writes a fresh claim token, and leases
+  the row for two minutes, so two relay instances or overlapping passes do not publish the same
+  head. The claim token is re-checked on both the publish mark and the failure bookkeeping, so a
+  stale instance cannot mark or quarantine a row another instance has taken over.
+- The lease must exceed the transport timeout (validated at startup). It bounds the only case
+  where an in-flight publish can still be overtaken: a pass that stalls for longer than the lease.
+  The stale copy is then republished after newer revisions, which is a duplicate the consumer must
+  discard; ordering is never violated for first deliveries.
 - A fact is marked published only after the transport accepts the envelope. A crash between
-  publish and mark replays the same event id: the fact is delivered twice and the consumer
-  discards the duplicate. Nothing is marked published early, so no fact is lost.
+  publish and mark replays the same event id, and the lease holds the retry back first. Nothing
+  is marked published early, so no fact is lost.
+- A failure of the local mark write is not a transport failure: it never consumes the retry
+  budget and can never quarantine a fact the consumer already accepted.
 - A failed head keeps its place and retries with exponential backoff (30 seconds doubling to one
   hour by default). Other bindings are independent and keep flowing.
-- After the configured number of attempts the row is quarantined with a safe failure class
-  (`TRANSPORT_UNAVAILABLE` or `TRANSPORT_REJECTED`). The quarantined head holds its own stream —
-  later revisions of that binding are not published out of order — while every other stream
-  continues. Nothing is discarded.
+- Only genuine delivery failures count as attempts, so a crash loop does not spend the retry
+  budget of a fact that was never refused. After the configured number of failures the row is
+  quarantined with a safe failure class (`TRANSPORT_UNAVAILABLE` or `TRANSPORT_REJECTED`). The
+  quarantined head holds its own `(application, stream)` — later revisions of that binding are not
+  published out of order — while every other stream continues. Nothing is discarded.
 
 ## Transport
 
@@ -29,7 +38,10 @@ unchanged to the configured consumer endpoint and discards the response body.
 |---|---|---|
 | 2xx | — | marked published |
 | 408, 429, 5xx, timeouts, IO failure | `TRANSPORT_UNAVAILABLE` | retried with backoff |
-| any other status | `TRANSPORT_REJECTED` | retried, then quarantined |
+| any other status (including 3xx) | `TRANSPORT_REJECTED` | retried, then quarantined |
+
+When `ums.outbox.consumer-token` is set it is sent as `Authorization: Bearer …`; mutual TLS and
+workload identity are deployment configuration. The response body is never read or logged.
 
 The relay is **disabled by default**. Enabling it without a consumer endpoint fails fast at
 startup rather than accumulating retries.
@@ -40,20 +52,24 @@ startup rather than accumulating retries.
 |---|---|---|
 | `ums.outbox.relay.enabled` | `false` | enables the relay, scheduler, metrics and repair runner |
 | `ums.outbox.consumer-uri` | — | required when enabled; HTTP(S) endpoint that accepts the envelope |
+| `ums.outbox.consumer-token` | — | optional bearer token for the consumer endpoint |
 | `ums.outbox.relay.interval` | `PT30S` | delay between passes |
 | `ums.outbox.relay.batch-size` | `20` | maximum heads claimed per pass |
 | `ums.outbox.relay.max-attempts` | `8` | attempts before quarantine |
 | `ums.outbox.relay.backoff-base` | `PT30S` | first retry delay, doubled per attempt |
 | `ums.outbox.relay.backoff-max` | `PT1H` | backoff ceiling |
-| `ums.outbox.relay.lease` | `PT2M` | claim lease before a crashed pass can retry |
+| `ums.outbox.relay.lease` | `PT2M` | claim lease before a crashed pass can retry; must exceed the timeout |
 | `ums.outbox.relay.timeout-seconds` | `5` | HTTP request timeout |
 
 ## Operator signals
 
 `OutboxRelay.status()` reports unpublished count, oldest unpublished age, retrying count,
-quarantined count, oldest quarantine age, and the number of streams whose head is quarantined.
-Those six values are registered as `ums.outbox.*` gauges, so they appear wherever Micrometer
-metrics are scraped. No event payload, subject, reference, or token is ever a label or a value.
+quarantined count, oldest quarantine age, and the number of `(application, stream)` pairs whose
+head is quarantined. Ages are clamped at zero so a database clock slightly ahead of the
+application clock cannot produce a negative gauge. Those six values are registered as
+`ums.outbox.*` gauges through one cached snapshot per five-second window, and a database error
+during a scrape serves the previous snapshot instead of failing the exposition. No event payload,
+subject, reference, or token is ever a label or a value.
 
 ## Repair
 

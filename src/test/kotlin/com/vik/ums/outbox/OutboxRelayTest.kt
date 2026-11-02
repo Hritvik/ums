@@ -107,6 +107,10 @@ class OutboxRelayTest {
         assertThat(publishedAt(later)).isNull()
         assertThat(jdbc.queryForObject("select quarantined_at is not null from ums_event_outbox where event_id = ?",
             Boolean::class.java, stuck)).isTrue()
+
+        // A stream that only becomes due after the quarantine still flows on the next pass.
+        emit("s3", 1)
+        assertThat(relay.relayOnce()).isEqualTo(RelayPass(1, 0, 0))
     }
 
     @Test fun `a quarantined fact can be re-driven with the same identity`() {
@@ -137,6 +141,8 @@ class OutboxRelayTest {
 
         assertThatThrownBy { crashingRelay.relayOnce() }.isInstanceOf(AssertionError::class.java)
         assertThat(publishedAt(event)).isNull()
+        // The claim lease holds the fact back instead of retrying it immediately.
+        assertThat(relay().relayOnce()).isEqualTo(RelayPass(0, 0, 0))
 
         clock.advance(Duration.ofMinutes(3))
         assertThat(relay().relayOnce()).isEqualTo(RelayPass(1, 0, 0))
@@ -228,7 +234,7 @@ class OutboxRelayTest {
         relay.relayOnce()
 
         val registry = io.micrometer.core.instrument.simple.SimpleMeterRegistry()
-        OutboxRelayConfiguration().outboxRelayMetrics(relay).bindTo(registry)
+        OutboxRelayConfiguration().outboxRelayMetrics(OutboxSignals(relay, clock)).bindTo(registry)
 
         assertThat(registry.get("ums.outbox.quarantined").gauge().value()).isEqualTo(1.0)
         assertThat(registry.get("ums.outbox.blocked.streams").gauge().value()).isEqualTo(1.0)
