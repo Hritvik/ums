@@ -26,6 +26,8 @@ data class ErasureEntry(
     val erasedAt: Instant,
     val obligationKind: String = "APP_DELETION",
     val causeReference: UUID? = null,
+    /** Monotonic feed order; the reconciliation cursor never depends on clocks. */
+    val sequence: Long = 0,
 )
 
 /** Thrown when the evidence exists but cannot be trusted; the caller must fail closed. */
@@ -59,16 +61,17 @@ class ErasureJournal(val path: Path) {
             "erasedAt" to entry.erasedAt.toString(),
             "obligationKind" to entry.obligationKind,
             "causeReference" to entry.causeReference?.toString(),
+            "sequence" to entry.sequence,
         ))
         FileChannel.open(path, StandardOpenOption.CREATE, StandardOpenOption.READ, StandardOpenOption.WRITE)
             .use { channel ->
-                repairTornTail(channel)
                 requireHeader(channel)
+                repairTornTail(channel)
                 if (channel.size() == 0L) {
-                    channel.write(ByteBuffer.wrap((HEADER + "\n").toByteArray()))
+                    writeFully(channel, (HEADER + "\n").toByteArray())
                 }
                 channel.position(channel.size())
-                channel.write(ByteBuffer.wrap(line + "\n".toByteArray()))
+                writeFully(channel, line + "\n".toByteArray())
                 channel.force(true)
             }
         syncDirectory()
@@ -106,6 +109,24 @@ class ErasureJournal(val path: Path) {
         if (firstLine != HEADER) {
             throw ErasureJournalException("Refusing to append to a file that is not the erasure journal: $path")
         }
+    }
+
+    private fun writeFully(channel: FileChannel, bytes: ByteArray) {
+        val buffer = ByteBuffer.wrap(bytes)
+        while (buffer.hasRemaining()) {
+            channel.write(buffer)
+        }
+    }
+
+    /** Creates the header for a genuinely new deployment. */
+    fun initialise() {
+        Files.createDirectories(path.toAbsolutePath().parent)
+        FileChannel.open(path, StandardOpenOption.CREATE, StandardOpenOption.READ, StandardOpenOption.WRITE)
+            .use { channel ->
+                if (channel.size() == 0L) writeFully(channel, (HEADER + "\n").toByteArray())
+                channel.force(true)
+            }
+        syncDirectory()
     }
 
     /** A crash can leave a partial final line; it is dropped before the next append. */
@@ -159,6 +180,7 @@ class ErasureJournal(val path: Path) {
             erasedAt = Instant.parse(node["erasedAt"].asText()),
             obligationKind = node["obligationKind"]?.asText() ?: "APP_DELETION",
             causeReference = node["causeReference"]?.takeUnless { it.isNull }?.asText()?.let(UUID::fromString),
+            sequence = node["sequence"]?.asLong() ?: 0,
         )
     } catch (invalid: Exception) {
         throw ErasureJournalException("Erasure journal line $number is invalid", invalid)
@@ -180,21 +202,22 @@ class ErasureFeed(private val jdbc: JdbcTemplate) {
             obligationKind, causeReference)
     }
 
-    fun pending(limit: Int): List<ErasureEntry> = jdbc.query("""select feed_reference,
+    fun pending(limit: Int): List<ErasureEntry> = jdbc.query("""select feed_reference, feed_sequence,
             issuer_environment_ref, app_reference, subject_reference, retired_profile_reference,
             retired_generation, erased_binding_revision, erased_at, obligation_kind, cause_reference
         from ums_erasure_journal_feed where appended_at is null
-        order by erased_at, feed_reference limit ?""",
+        order by feed_sequence limit ?""",
         { rs, _ -> ErasureEntry(
             rs.getObject(1, UUID::class.java),
-            ProfileScope(rs.getObject(2, UUID::class.java), rs.getObject(3, UUID::class.java),
-                rs.getObject(4, UUID::class.java)),
-            rs.getObject(5, UUID::class.java),
-            rs.getLong(6),
+            ProfileScope(rs.getObject(3, UUID::class.java), rs.getObject(4, UUID::class.java),
+                rs.getObject(5, UUID::class.java)),
+            rs.getObject(6, UUID::class.java),
             rs.getLong(7),
-            rs.getTimestamp(8).toInstant(),
-            rs.getString(9),
-            rs.getObject(10, UUID::class.java),
+            rs.getLong(8),
+            rs.getTimestamp(9).toInstant(),
+            rs.getString(10),
+            rs.getObject(11, UUID::class.java),
+            rs.getLong(2),
         ) }, limit)
 
     fun appended(feedReference: UUID) {

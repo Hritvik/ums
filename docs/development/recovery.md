@@ -35,21 +35,25 @@ reconciliation finishes and a failure aborts startup before the port opens:
 
 1. Every pending feed row is flushed to the journal (all batches, not just one).
 2. Every journal entry after the stored cursor is applied to the current database. The cursor
-   (`ums_erasure_reconciliation`) travels with the data, so a restored backup carries its old
-   cursor and still replays everything that happened after it; repeated boots process only new
-   entries. If the binding is already erased,
+   (`ums_erasure_reconciliation`, feed sequence) travels with the data, so a restored backup
+   carries its old cursor and still replays everything that happened after it; repeated boots
+   process only new entries, and the cursor never depends on clocks. If the binding is already erased,
    nothing happens. If its current generation differs from the retired one, it is a deliberate
    re-onboarding after the erasure and is left alone. Otherwise the binding is erased again
    (fields nulled, lifecycle `ERASED`, profile and generation retired, revision bumped) and an
    erasure obligation is recorded with the original kind and cause so the fence survives, any
-   pending deletion request is superseded, causes are cleared, exports invalidated, and queued
-   notices suppressed.
+   pending deletion request is superseded, causes are cleared, exports invalidated, and notices
+   suppressed through the canonical path, which bumps the notice revision and publishes the
+   withdrawal fact so a queue holding the pre-erasure notice learns about it. Replay is safe
+   without a content-authority re-check because a journal entry only exists for an erasure that
+   already passed that guard when it was acknowledged.
 3. Counts are logged: entries, erased, already erased, newer generations, missing scopes, late
    appends.
 
 If the journal path is configured but the file is missing, or pending feed rows cannot be
 appended, startup fails: serving a restored database without evidence would be exactly the
-resurrection the gate forbids. Appending to a file whose header is not the journal header is
+resurrection the gate forbids. A database with no erasure obligation has nothing to resurrect,
+so a genuinely new deployment bootstraps an empty journal header instead of failing. Appending to a file whose header is not the journal header is
 refused, so a rotated or foreign file cannot silently swallow evidence. Setting
 `ums.recovery.allow-missing-evidence=true` is the explicit, logged degraded mode for a
 non-privacy environment.

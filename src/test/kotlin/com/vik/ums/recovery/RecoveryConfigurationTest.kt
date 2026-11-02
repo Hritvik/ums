@@ -19,6 +19,7 @@ class RecoveryConfigurationTest {
     private val dataSource = DriverManagerDataSource("jdbc:postgresql://127.0.0.1:1/ums", "ums", "ums")
     private val jdbc = JdbcTemplate(dataSource)
     private val transactions = TransactionTemplate(DataSourceTransactionManager(dataSource))
+    private val mapper = com.fasterxml.jackson.module.kotlin.jacksonObjectMapper()
 
     @TempDir lateinit var directory: Path
 
@@ -28,6 +29,8 @@ class RecoveryConfigurationTest {
         context.registerBean("jdbc", JdbcTemplate::class.java, Supplier { jdbc })
         context.registerBean("transactions", TransactionTemplate::class.java, Supplier { transactions })
         context.registerBean("clock", Clock::class.java, Supplier { Clock.systemUTC() })
+        context.registerBean("mapper", com.fasterxml.jackson.databind.ObjectMapper::class.java, Supplier { mapper })
+        context.environment.propertySources.addFirst(MapPropertySource("env", mapOf("ums.environment" to "test")))
         context.register(RecoveryConfiguration::class.java)
         return context
     }

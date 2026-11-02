@@ -94,7 +94,7 @@ class RestoreDrillTest {
         val fencesBefore = restoredJdbc.queryForObject("select count(*) from ums_profile_erasure_obligations",
             Int::class.java)!!
 
-        val result = RestoreReconciler(restoredJdbc, restoredTransactions, journal, Clock.systemUTC()).reconcile()
+        val result = RestoreReconciler(restoredJdbc, restoredTransactions, mapper, "test", journal, Clock.systemUTC()).reconcile()
         val elapsed = Duration.between(restoreStarted, Instant.now())
 
         assertThat(result.erased).isEqualTo(1)

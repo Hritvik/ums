@@ -35,15 +35,17 @@ class RecoveryConfiguration {
     @Bean
     @ConditionalOnProperty(name = ["ums.recovery.erasure-journal-path"])
     fun restoreReconciler(jdbc: JdbcTemplate, transactions: TransactionTemplate,
-                          journal: ErasureJournal, clock: Clock): RestoreReconciler =
-        RestoreReconciler(jdbc, transactions, journal, clock)
+                          mapper: com.fasterxml.jackson.databind.ObjectMapper,
+                          environment: Environment, journal: ErasureJournal, clock: Clock): RestoreReconciler =
+        RestoreReconciler(jdbc, transactions, mapper,
+            environment.getRequiredProperty("ums.environment"), journal, clock)
 
     @Bean
     @ConditionalOnProperty(name = ["ums.recovery.erasure-journal-path"])
-    fun restoreReconciliationLifecycle(journal: ErasureJournal, flusher: ErasureJournalFlusher,
-                                       reconciler: RestoreReconciler,
+    fun restoreReconciliationLifecycle(jdbc: JdbcTemplate, journal: ErasureJournal,
+                                       flusher: ErasureJournalFlusher, reconciler: RestoreReconciler,
                                        environment: Environment): SmartLifecycle =
-        RestoreReconciliationLifecycle(journal, flusher, reconciler,
+        RestoreReconciliationLifecycle(jdbc, journal, flusher, reconciler,
             environment.getProperty("ums.recovery.allow-missing-evidence", "false").toBoolean())
 
     @Bean
@@ -86,6 +88,7 @@ private val log = LoggerFactory.getLogger(RecoveryConfiguration::class.java)
  * failure aborts startup instead of serving a restored database without evidence.
  */
 class RestoreReconciliationLifecycle(
+    private val jdbc: JdbcTemplate,
     private val journal: ErasureJournal,
     private val flusher: ErasureJournalFlusher,
     private val reconciler: RestoreReconciler,
@@ -95,11 +98,21 @@ class RestoreReconciliationLifecycle(
 
     override fun start() {
         if (!Files.exists(journal.path)) {
-            if (!allowMissingEvidence) {
-                throw IllegalStateException(
-                    "Erasure journal is missing at ${journal.path}; refusing to serve without restore evidence")
+            if (allowMissingEvidence) {
+                log.error("Erasure journal is missing at {}; starting in degraded mode by configuration",
+                    journal.path)
+            } else {
+                val erasedBefore = jdbc.queryForObject(
+                    "select count(*) from ums_profile_erasure_obligations", Long::class.java) ?: 0L
+                if (erasedBefore > 0L) {
+                    throw IllegalStateException(
+                        "Erasure journal is missing at ${journal.path} after an erasure; refusing to serve without evidence")
+                }
+                // A new deployment has nothing to resurrect; create the evidence file so the next
+                // erasure has somewhere to go.
+                journal.initialise()
+                log.info("Initialised an empty erasure journal at {}", journal.path)
             }
-            log.error("Erasure journal is missing at {}; starting in degraded mode by configuration", journal.path)
         } else {
             val flushed = flusher.flushAll()
             check(!flusher.hasPending()) {

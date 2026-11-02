@@ -76,6 +76,15 @@ class RecoveryTest {
 
     private fun journal() = ErasureJournal(directory.resolve("erasure-journal.jsonl"))
 
+    private fun erasureObligation() {
+        jdbc.update("""insert into ums_profile_erasure_obligations
+            (fence_reference, issuer_environment_ref, app_reference, subject_reference, obligation_kind,
+             retired_profile_reference, retired_generation, obligation_at, erased_binding_revision, erased_at)
+            values (?, ?, ?, ?, 'APP_DELETION', ?, 1, ?, 1, ?)""",
+            UUID.randomUUID(), issuer, app, subject, UUID.randomUUID(),
+            java.sql.Timestamp.from(clock.instant()), java.sql.Timestamp.from(clock.instant()))
+    }
+
     private fun eraseNow(): UUID {
         val accepted = deletion.request(TrustedPrivacyAuthority(scope, UUID.randomUUID(),
             PrivacyPurpose.REQUEST_DELETION, clock.instant(), true, clock.instant().plus(Duration.ofMinutes(5))),
@@ -87,8 +96,11 @@ class RecoveryTest {
         jdbc.queryForObject("select generation from ums_profile_bindings where subject_reference = ?",
             Long::class.java, subject)!!
 
+    private val nextSequence = java.util.concurrent.atomic.AtomicLong(1)
+
     private fun entry(generation: Long, profile: UUID = UUID.randomUUID()) = ErasureEntry(
-        UUID.randomUUID(), scope, profile, generation, 2, clock.instant())
+        UUID.randomUUID(), scope, profile, generation, 2, clock.instant(),
+        sequence = nextSequence.getAndIncrement())
 
     @Test fun `the journal round-trips minimized entries and refuses a corrupt line`() {
         val journal = journal()
@@ -127,7 +139,7 @@ class RecoveryTest {
         val journal = journal()
         journal.append(entry(generation, profile))
 
-        val result = RestoreReconciler(jdbc, transactions, journal, clock).reconcile()
+        val result = RestoreReconciler(jdbc, transactions, mapper, "test", journal, clock).reconcile()
 
         assertThat(result.erased).isEqualTo(1)
         assertThat(jdbc.queryForObject("""select lifecycle || ':' || (display_name is null) || ':'
@@ -136,7 +148,7 @@ class RecoveryTest {
         assertThat(jdbc.queryForObject("select count(*) from ums_profile_erasure_obligations",
             Int::class.java)).isEqualTo(1)
         // The cursor means a second boot processes nothing already applied.
-        assertThat(RestoreReconciler(jdbc, transactions, journal, clock).reconcile().entries).isZero()
+        assertThat(RestoreReconciler(jdbc, transactions, mapper, "test", journal, clock).reconcile().entries).isZero()
 
         // Simulate a restore whose cursor predates the entry: a re-onboarded generation is a
         // deliberate new life, not a restore.
@@ -144,7 +156,7 @@ class RecoveryTest {
         jdbc.update("""update ums_profile_bindings set lifecycle = 'ACTIVE', readiness = 'PROFILE_READY',
             profile_reference = ?, generation = ?, profile_revision = 1, display_name = 'New Life'
             where subject_reference = ?""", UUID.randomUUID(), generation + 1, subject)
-        val newer = RestoreReconciler(jdbc, transactions, journal, clock).reconcile()
+        val newer = RestoreReconciler(jdbc, transactions, mapper, "test", journal, clock).reconcile()
 
         assertThat(newer.newerGeneration).isEqualTo(1)
         assertThat(jdbc.queryForObject("select display_name from ums_profile_bindings where subject_reference = ?",
@@ -156,7 +168,7 @@ class RecoveryTest {
         journal.append(entry(generation = 1).copy(
             scope = ProfileScope(issuer, app, UUID.randomUUID())))
 
-        val result = RestoreReconciler(jdbc, transactions, journal, Clock.systemUTC()).reconcile()
+        val result = RestoreReconciler(jdbc, transactions, mapper, "test", journal, Clock.systemUTC()).reconcile()
 
         assertThat(result.missing).isEqualTo(1)
     }
@@ -176,8 +188,8 @@ class RecoveryTest {
         val flusher = ErasureJournalFlusher(ErasureFeed(jdbc), blocked)
 
         assertThatThrownBy {
-            RestoreReconciliationLifecycle(blocked, flusher,
-                RestoreReconciler(jdbc, transactions, blocked, clock), allowMissingEvidence = false).start()
+            RestoreReconciliationLifecycle(jdbc, blocked, flusher,
+                RestoreReconciler(jdbc, transactions, mapper, "test", blocked, clock), allowMissingEvidence = false).start()
         }.isInstanceOf(IllegalStateException::class.java)
     }
 
@@ -223,7 +235,7 @@ class RecoveryTest {
         val journal = journal()
         journal.append(entry(generation()).copy(obligationKind = "CLOSURE_EXPIRY"))
 
-        val result = RestoreReconciler(jdbc, transactions, journal, clock).reconcile()
+        val result = RestoreReconciler(jdbc, transactions, mapper, "test", journal, clock).reconcile()
 
         assertThat(result.erased).isEqualTo(1)
         assertThat(jdbc.queryForObject("""select lifecycle || ':' || (closure_at is null)
@@ -253,15 +265,29 @@ class RecoveryTest {
     }
 
     @Test fun `a missing journal stops startup unless degraded mode is accepted`() {
+        // An erasure already happened: a missing journal means the evidence is gone.
+        erasureObligation()
         val journal = journal()
         val flusher = ErasureJournalFlusher(ErasureFeed(jdbc), journal)
-        val reconciler = RestoreReconciler(jdbc, transactions, journal, clock)
+        val reconciler = RestoreReconciler(jdbc, transactions, mapper, "test", journal, clock)
 
         assertThatThrownBy {
-            RestoreReconciliationLifecycle(journal, flusher, reconciler, allowMissingEvidence = false).start()
+            RestoreReconciliationLifecycle(jdbc, journal, flusher, reconciler, allowMissingEvidence = false).start()
         }.isInstanceOf(IllegalStateException::class.java)
 
-        RestoreReconciliationLifecycle(journal, flusher, reconciler, allowMissingEvidence = true).start()
+        RestoreReconciliationLifecycle(jdbc, journal, flusher, reconciler, allowMissingEvidence = true).start()
+        assertThat(Files.exists(journal.path)).isFalse()
+    }
+
+    @Test fun `a new deployment bootstraps an empty journal`() {
+        val journal = journal()
+        val flusher = ErasureJournalFlusher(ErasureFeed(jdbc), journal)
+        val reconciler = RestoreReconciler(jdbc, transactions, mapper, "test", journal, clock)
+
+        RestoreReconciliationLifecycle(jdbc, journal, flusher, reconciler, allowMissingEvidence = false).start()
+
+        assertThat(Files.exists(journal.path)).isTrue()
+        assertThat(journal.entries()).isEmpty()
     }
 
     private class AdjustableClock(@Volatile private var now: Instant) : Clock() {
