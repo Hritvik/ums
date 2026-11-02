@@ -14,6 +14,7 @@ identity/authentication; products retain their business data and permissions.
 - [Local erasure finalization](development/profile-erasure.md): Slice D2 deadline processing, replay fences, and local-completion limits.
 - [App-only deletion](development/profile-deletion.md): Slice D1 requests, cancellation, restricted status, and remaining privacy gates.
 - [Closure and retention](development/profile-closure.md): Slice D4–D5 app departure, the published 90-day deadline, and deliberate reactivation.
+- [Proposed contracts](contracts/proposed/association-report-v1.md): owner-acceptance proposals for the association report and the content attachment.
 - [Upgrade and rollback](operations/upgrade-and-rollback.md): the forward path, interrupted migrations, and rollback limits.
 - [Runbooks](operations/runbooks.md): alert thresholds and the operator procedures.
 - [Operating tier](operations/operating-tier.md): what runs on its own and what is not promised.
