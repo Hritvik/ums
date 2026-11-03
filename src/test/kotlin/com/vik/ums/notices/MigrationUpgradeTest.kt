@@ -6,7 +6,7 @@ import org.flywaydb.core.api.MigrationVersion
 import org.junit.jupiter.api.Test
 import org.springframework.jdbc.core.JdbcTemplate
 import org.springframework.jdbc.datasource.DriverManagerDataSource
-import org.testcontainers.containers.PostgreSQLContainer
+import org.testcontainers.postgresql.PostgreSQLContainer
 import org.testcontainers.junit.jupiter.Container
 import org.testcontainers.junit.jupiter.Testcontainers
 import java.sql.Timestamp
@@ -19,7 +19,7 @@ class MigrationUpgradeTest {
     companion object {
         @Container
         @JvmStatic
-        val postgres = PostgreSQLContainer<Nothing>("postgres:17.6-alpine")
+        val postgres = PostgreSQLContainer("postgres:17.6-alpine")
     }
 
     @Test fun `upgrading a populated V11 database rebinds notice identities to the closure instance`() {

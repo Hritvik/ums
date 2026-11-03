@@ -1,10 +1,10 @@
 import org.gradle.testing.jacoco.tasks.JacocoCoverageVerification
+import org.springframework.boot.gradle.plugin.SpringBootPlugin
 
 plugins {
     kotlin("jvm") version "2.2.21"
     kotlin("plugin.spring") version "2.2.21"
-    id("org.springframework.boot") version "3.5.16"
-    id("io.spring.dependency-management") version "1.1.7"
+    id("org.springframework.boot") version "4.0.9"
     jacoco
 }
 
@@ -34,6 +34,7 @@ kotlin {
 }
 
 dependencies {
+    implementation(platform(SpringBootPlugin.BOM_COORDINATES))
     implementation("org.springframework.boot:spring-boot-starter-web")
     implementation("org.springframework.boot:spring-boot-starter-jdbc")
     implementation("org.springframework.boot:spring-boot-starter-security")
@@ -41,6 +42,7 @@ dependencies {
     implementation("org.springframework.boot:spring-boot-starter-actuator")
     implementation("com.fasterxml.jackson.module:jackson-module-kotlin")
     implementation("org.jetbrains.kotlin:kotlin-reflect")
+    implementation("org.springframework.boot:spring-boot-starter-flyway")
     implementation("org.flywaydb:flyway-core")
     runtimeOnly("org.flywaydb:flyway-database-postgresql")
     runtimeOnly("org.postgresql:postgresql")
@@ -49,9 +51,8 @@ dependencies {
 
     testImplementation("org.springframework.boot:spring-boot-starter-test")
     testImplementation("org.springframework.security:spring-security-test")
-    testImplementation("org.apache.commons:commons-compress:1.28.0")
-    testImplementation("org.testcontainers:junit-jupiter")
-    testImplementation("org.testcontainers:postgresql")
+    testImplementation("org.testcontainers:testcontainers-junit-jupiter")
+    testImplementation("org.testcontainers:testcontainers-postgresql")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
 }
 
@@ -59,6 +60,14 @@ jacoco { toolVersion = "0.8.13" }
 
 // External dependency/secret audit. The in-build SecretScanTest runs always; the external
 // scanners are required in CI and optional locally.
+// Resolve every resolvable configuration so dependency locking covers Kotlin metadata
+// configurations too, not just the ones a normal build touches.
+tasks.register("resolveAndLockAll") {
+    doFirst {
+        configurations.filter { it.isCanBeResolved }.forEach { it.resolve() }
+    }
+}
+
 tasks.register<Exec>("securityAudit") {
     commandLine("sh", "scripts/security-audit.sh")
 }

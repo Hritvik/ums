@@ -13,7 +13,7 @@ import org.springframework.jdbc.core.JdbcTemplate
 import org.springframework.jdbc.datasource.DataSourceTransactionManager
 import org.springframework.jdbc.datasource.DriverManagerDataSource
 import org.springframework.transaction.support.TransactionTemplate
-import org.testcontainers.containers.PostgreSQLContainer
+import org.testcontainers.postgresql.PostgreSQLContainer
 import org.testcontainers.junit.jupiter.Container
 import org.testcontainers.junit.jupiter.Testcontainers
 import java.util.UUID
@@ -21,7 +21,7 @@ import java.util.UUID
 @Testcontainers
 class IamSnapshotRepairTest {
     companion object {
-        @Container @JvmStatic val postgres = PostgreSQLContainer<Nothing>("postgres:17.6-alpine")
+        @Container @JvmStatic val postgres = PostgreSQLContainer("postgres:17.6-alpine")
         const val SUBJECT = "aps_0123456789abcdefghijkL"
         const val ACTIVATION = "act_0123456789abcdef"
     }

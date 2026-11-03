@@ -28,7 +28,7 @@ import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
 import org.springframework.http.MediaType
 import org.springframework.test.web.servlet.setup.MockMvcBuilders
 import org.springframework.transaction.support.TransactionTemplate
-import org.testcontainers.containers.PostgreSQLContainer
+import org.testcontainers.postgresql.PostgreSQLContainer
 import org.testcontainers.junit.jupiter.Container
 import org.testcontainers.junit.jupiter.Testcontainers
 import java.time.Instant
@@ -37,7 +37,7 @@ import java.util.UUID
 
 @Testcontainers
 class ProfileStatusHttpTest {
-    companion object { @Container @JvmStatic val postgres = PostgreSQLContainer<Nothing>("postgres:17.6-alpine") }
+    companion object { @Container @JvmStatic val postgres = PostgreSQLContainer("postgres:17.6-alpine") }
     private val mapper = jacksonObjectMapper()
     private val issuerEnvironmentRef = UUID.randomUUID()
     private val appReference = UUID.randomUUID()
@@ -225,7 +225,7 @@ class ProfileStatusHttpTest {
 
         mockMvc.perform(patch("/api/v1/profile").contentType(MediaType.APPLICATION_JSON)
             .header("Idempotency-Key", uuid()).content(patchBody("Ada\u202Eevil")))
-            .andExpect(status().isUnprocessableEntity)
+            .andExpect(status().`is`(422))
             .andExpect(jsonPath("$.error.code").value("invalid_field"))
     }
 

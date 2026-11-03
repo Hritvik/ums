@@ -5,14 +5,10 @@ import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.flywaydb.core.Flyway
 import org.junit.jupiter.api.Test
 import org.springframework.boot.test.context.SpringBootTest
-import org.springframework.boot.test.web.client.TestRestTemplate
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.context.annotation.Bean
 import org.springframework.boot.test.context.TestConfiguration
 import org.springframework.context.annotation.Primary
-import org.springframework.http.HttpEntity
-import org.springframework.http.HttpHeaders
-import org.springframework.http.HttpMethod
 import org.springframework.http.HttpStatus
 import org.springframework.jdbc.core.JdbcTemplate
 import org.springframework.jdbc.datasource.DataSourceTransactionManager
@@ -21,7 +17,7 @@ import org.springframework.security.oauth2.jwt.JwtDecoder
 import org.springframework.test.context.DynamicPropertyRegistry
 import org.springframework.test.context.DynamicPropertySource
 import org.springframework.transaction.support.TransactionTemplate
-import org.testcontainers.containers.PostgreSQLContainer
+import org.testcontainers.postgresql.PostgreSQLContainer
 import org.testcontainers.junit.jupiter.Container
 import org.testcontainers.junit.jupiter.Testcontainers
 import org.springframework.context.annotation.Import
@@ -35,7 +31,24 @@ import javax.sql.DataSource
     "ums.maintenance.enabled=false"])
 @Import(UserManagementServiceApplicationTests.TestAuthority::class)
 class UserManagementServiceApplicationTests {
-    @Autowired lateinit var http: TestRestTemplate
+    @org.springframework.beans.factory.annotation.Value("\${local.server.port}")
+    var port: Int = 0
+
+    private val client: java.net.http.HttpClient = java.net.http.HttpClient.newHttpClient()
+
+    private fun get(path: String): java.net.http.HttpResponse<String> =
+        client.send(java.net.http.HttpRequest.newBuilder(java.net.URI.create("http://localhost:$port$path")).GET().build(),
+            java.net.http.HttpResponse.BodyHandlers.ofString())
+
+    private fun post(path: String): java.net.http.HttpResponse<String> =
+        client.send(java.net.http.HttpRequest.newBuilder(java.net.URI.create("http://localhost:$port$path"))
+            .POST(java.net.http.HttpRequest.BodyPublishers.noBody()).build(),
+            java.net.http.HttpResponse.BodyHandlers.ofString())
+
+    private fun getWithBearer(path: String, token: String): java.net.http.HttpResponse<String> =
+        client.send(java.net.http.HttpRequest.newBuilder(java.net.URI.create("http://localhost:$port$path"))
+            .header("Authorization", "Bearer $token").GET().build(),
+            java.net.http.HttpResponse.BodyHandlers.ofString())
     @Autowired lateinit var jdbc: JdbcTemplate
     @Autowired lateinit var datasource: DataSource
     @Autowired lateinit var flyway: Flyway
@@ -43,14 +56,14 @@ class UserManagementServiceApplicationTests {
     companion object {
         @Container
         @JvmStatic
-        val postgres = PostgreSQLContainer<Nothing>("postgres:17.6-alpine")
+        val postgres = PostgreSQLContainer("postgres:17.6-alpine")
 
         @DynamicPropertySource
         @JvmStatic
         fun properties(registry: DynamicPropertyRegistry) {
-            registry.add("spring.datasource.url", postgres::getJdbcUrl)
-            registry.add("spring.datasource.username", postgres::getUsername)
-            registry.add("spring.datasource.password", postgres::getPassword)
+            registry.add("spring.datasource.url", { postgres.jdbcUrl })
+            registry.add("spring.datasource.username", { postgres.username })
+            registry.add("spring.datasource.password", { postgres.password })
             registry.add("ums.security.issuer") { "https://iam.example.test" }
             registry.add("ums.security.jwk-set-uri") { "https://iam.example.test/keys" }
             registry.add("ums.security.audience") { "https://ums.example.test" }
@@ -105,36 +118,35 @@ class UserManagementServiceApplicationTests {
 
     @Test
     fun `public liveness exposes no database or security details`() {
-        val response = http.getForEntity("/actuator/health", String::class.java)
-        assertThat(response.statusCode).isEqualTo(HttpStatus.OK)
-        assertThat(response.body).isEqualTo("{\"status\":\"UP\"}")
+        val response = get("/actuator/health")
+        assertThat(response.statusCode()).isEqualTo(HttpStatus.OK.value())
+        assertThat(response.body()).contains("\"status\":\"UP\"")
+            .doesNotContain("db", "diskSpace", "components")
     }
 
     @Test
     fun `unauthenticated application and retired CRUD routes are denied`() {
         listOf("/api/v1/profile", "/api/1.0/users", "/api/test", "/internal/v1/apps/dutch/profile-policies")
             .forEach { path ->
-                assertThat(http.getForEntity(path, String::class.java).statusCode)
-                    .describedAs(path).isEqualTo(HttpStatus.UNAUTHORIZED)
+                assertThat(get(path).statusCode())
+                    .describedAs(path).isEqualTo(HttpStatus.UNAUTHORIZED.value())
             }
     }
 
     @Test
     fun `authenticated token still grants no foundation business capability`() {
-        val headers = HttpHeaders().apply { setBearerAuth("test-fixture-token") }
-        val response = http.exchange("/api/v1/profile", HttpMethod.GET, HttpEntity<Void>(headers), String::class.java)
+        val response = getWithBearer("/api/v1/profile", "test-fixture-token")
         // An implemented business route is the only permitted one; every other route stays
         // closed to an authenticated caller. denyAll answers 401 in this configuration.
         // An implemented route is the only permitted one; unmapped routes stay closed. This
         // filter configuration answers denyAll with the safe unauthenticated envelope.
-        assertThat(response.statusCode.is4xxClientError).isTrue()
-        assertThat(response.body ?: "").contains("error").contains("correlationId").doesNotContain("app_id")
+        assertThat(response.statusCode() in 400..499).isTrue()
+        assertThat(response.body() ?: "").contains("error").contains("correlationId").doesNotContain("app_id")
     }
 
     @Test
     fun `health permission applies only to GET`() {
-        assertThat(http.postForEntity("/actuator/health", null, String::class.java).statusCode)
-            .isEqualTo(HttpStatus.UNAUTHORIZED)
+        assertThat(post("/actuator/health").statusCode()).isEqualTo(HttpStatus.UNAUTHORIZED.value())
     }
 
     @Test

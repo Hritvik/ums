@@ -59,10 +59,10 @@ shared store, which this best-effort tier does not claim.
 - Advisories found by the first scan were fixed by raising the Boot BOM versions: Tomcat 10.1.61,
   Jackson 2.21.8, log4j-api 2.26.1, PostgreSQL 42.7.12, commons-compress 1.28.0, commons-lang3
   3.18.0.
-- Accepted risks are recorded in `osv-scanner.toml` with a reason: two `spring-webmvc` advisories
-  whose fix exists only in Spring Framework 7 / Boot 4 (a major upgrade tracked separately), and
-  BouncyCastle/OpenTelemetry advisories that only affect Kotlin build-tool configurations and are
-  never packaged in the runtime artifact.
+- The runtime is Spring Framework 7.0.10 on Boot 4.0.9, which resolves the two `spring-webmvc`
+  advisories; those ignores are removed from `osv-scanner.toml`.
+- The only accepted risks left are BouncyCastle/OpenTelemetry advisories that exist on Kotlin
+  build-tool classpaths and are never packaged in the runtime artifact.
 - A finding in the shipped runtime is recorded with its severity; unresolved critical or high
   runtime findings block the release. Build-tool-only findings are listed as accepted risks with
   the reason that they are never packaged, and they do not silently disappear: the ignore file is
@@ -77,13 +77,12 @@ shared store, which this best-effort tier does not claim.
 - Rate limits are per instance, not shared. The pre-authentication limit keys on the socket
   address; behind a proxy every caller shares one bucket unless forward-header handling is
   configured, and enabling it naively would let a client rotate `X-Forwarded-For`.
-- `spring-webmvc` carries two accepted advisories with no 6.2.x fix; the remediation is the
-  Spring Framework 7 / Boot 4 upgrade.
 - Build-tool-only BouncyCastle and OpenTelemetry advisories are documented and ignored; they are
   reachable only from the Kotlin compiler's own classpaths.
-- R-1: `spring-webmvc` 6.2.x has two accepted 9.8 advisories whose fix is Spring Framework 7.0.9,
-  available only with a Spring Boot 4 major upgrade. The migration plan is
-  [spring-7-upgrade.md](../operations/spring-7-upgrade.md); it is not a drop-in (Jackson 3, Spring
-  Security 7, Gradle 8.14).
+- Boot 4 keeps the services on a Jackson 2 mapper while HTTP serialization uses Jackson 3. That
+  split is deliberate and covered by the HTTP tests; a later cleanup can move the services fully
+  to Jackson 3.
+- R-1 is closed: the Spring Framework 7 / Boot 4 upgrade shipped, and the migration record is
+  [spring-7-upgrade.md](../operations/spring-7-upgrade.md).
 - The avatar cross-scope attack is deferred behind W-11.
 - External scanner databases are fetched at CI time; offline builds skip them by design.

@@ -1,6 +1,10 @@
 # R-1: Spring Framework 7 / Boot 4 upgrade
 
-Status: **not started** — tracked follow-up to the two accepted `spring-webmvc` advisories.
+Status: **complete** — the upgrade shipped; the two `spring-webmvc` ignores are removed and
+`osv-scanner` reports no issues.
+
+Result: 351 JVM tests green, `CI=true ./gradlew securityAudit` passes, runtime Spring 7.0.10 on
+Boot 4.0.9, Gradle 8.14.3.
 
 ## Why
 
@@ -33,7 +37,14 @@ Two isolated spikes (both reverted) reached a compiling application on Boot 4.0.
 
 The spikes were discarded; `main` stays on Boot 3.5.16 with the two advisories documented as R-1.
 
-## Planned steps
+## What shipped
+
+The steps below were completed, plus: Testcontainers moved to the 2.0.5 coordinates and the
+non-generic `PostgreSQLContainer`; the Maven metadata configurations are now resolved for locking
+by a `resolveAndLockAll` task; the full-context test uses a JDK `HttpClient`; the health assertion
+accepts Boot 4's groups field.
+
+## Steps
 
 1. Raise the Gradle wrapper to 8.14.3 with the official checksum and verify the current build.
 2. Upgrade Boot to the latest 4.0.x, replace the dependency-management plugin with the platform

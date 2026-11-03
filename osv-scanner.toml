@@ -1,12 +1,3 @@
-# Accepted risks for advisories with no fix in the current line. Each must be revisited.
-[[IgnoredVulns]]
-id = "GHSA-j9f9-w8pj-32f8"
-reason = "spring-webmvc: fixed only in Spring Framework 7 / Boot 4; a major upgrade is tracked separately. Not reachable through the pinned routes without an untrusted template surface."
-
-[[IgnoredVulns]]
-id = "GHSA-pc63-qcmh-9cmg"
-reason = "spring-webmvc: same as GHSA-j9f9-w8pj-32f8; no 6.2.x fix exists."
-
 # Build-tool configurations only: the Kotlin compiler's own classpaths, never packaged in the
 # runtime artifact. The shipped application has no BouncyCastle or OpenTelemetry dependency.
 [[IgnoredVulns]]

@@ -11,7 +11,7 @@ import org.springframework.jdbc.core.JdbcTemplate
 import org.springframework.jdbc.datasource.DataSourceTransactionManager
 import org.springframework.jdbc.datasource.DriverManagerDataSource
 import org.springframework.transaction.support.TransactionTemplate
-import org.testcontainers.containers.PostgreSQLContainer
+import org.testcontainers.postgresql.PostgreSQLContainer
 import org.testcontainers.junit.jupiter.Container
 import org.testcontainers.junit.jupiter.Testcontainers
 import java.util.UUID
@@ -20,7 +20,7 @@ import java.util.concurrent.Executors
 
 @Testcontainers
 class IamOnboardingAdapterTest {
-    companion object { @Container @JvmStatic val postgres = PostgreSQLContainer<Nothing>("postgres:17.6-alpine") }
+    companion object { @Container @JvmStatic val postgres = PostgreSQLContainer("postgres:17.6-alpine") }
     private val mapper = jacksonObjectMapper()
     private val app = AppScope(UUID.randomUUID(), UUID.randomUUID())
     private lateinit var jdbc: JdbcTemplate
