@@ -17,7 +17,7 @@ identity/authentication; products retain their business data and permissions.
 - [Proposed contracts](contracts/proposed/association-report-v1.md): owner-acceptance proposals for the association report and the content attachment.
 - [Upgrade and rollback](operations/upgrade-and-rollback.md): the forward path, interrupted migrations, and rollback limits.
 - [Security boundaries](development/security.md): Slice G1 attack record, rate limits, and scanning.
-- [Spring 7 upgrade plan](operations/spring-7-upgrade.md): the tracked remediation for residual R-1.
+- [Spring 7 upgrade record](operations/spring-7-upgrade.md): the completed Boot 4 migration that closed R-1.
 - [Runbooks](operations/runbooks.md): alert thresholds and the operator procedures.
 - [Operating tier](operations/operating-tier.md): what runs on its own and what is not promised.
 - [Restore recovery](development/recovery.md): Slice F3 erasure journal, reconciliation, and backup signals.

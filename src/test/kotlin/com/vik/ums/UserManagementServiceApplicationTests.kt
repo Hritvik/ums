@@ -120,8 +120,10 @@ class UserManagementServiceApplicationTests {
     fun `public liveness exposes no database or security details`() {
         val response = get("/actuator/health")
         assertThat(response.statusCode()).isEqualTo(HttpStatus.OK.value())
-        assertThat(response.body()).contains("\"status\":\"UP\"")
-            .doesNotContain("db", "diskSpace", "components")
+        val health = com.fasterxml.jackson.module.kotlin.jacksonObjectMapper().readTree(response.body())
+        assertThat(health["status"].asText()).isEqualTo("UP")
+        assertThat(health.fieldNames().asSequence().toSet()).isEqualTo(setOf("status", "groups"))
+        assertThat(response.body()).doesNotContain("db", "diskSpace", "components", "details")
     }
 
     @Test

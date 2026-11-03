@@ -56,9 +56,9 @@ shared store, which this best-effort tier does not claim.
   fixtures) and osv-scanner (v1.9.2) when installed. CI installs both with `go install`
   (`github.com/zricethezav/gitleaks/v8@v8.30.1`, `osv-scanner@v1.9.2`) and wires the task into
   `check`; locally a missing scanner is a warning, and `CI=true` makes it a failure.
-- Advisories found by the first scan were fixed by raising the Boot BOM versions: Tomcat 10.1.61,
-  Jackson 2.21.8, log4j-api 2.26.1, PostgreSQL 42.7.12, commons-compress 1.28.0, commons-lang3
-  3.18.0.
+- The runtime is on the Boot 4.0.9 / Spring 7.0.10 baseline: Tomcat 11.0.27, Jackson 2.21.7,
+  log4j-api 2.25.5, PostgreSQL 42.7.14, Flyway 11.14.1, Testcontainers 2.0.5. Every resolved
+  runtime coordinate was checked against OSV and reports no advisories.
 - The runtime is Spring Framework 7.0.10 on Boot 4.0.9, which resolves the two `spring-webmvc`
   advisories; those ignores are removed from `osv-scanner.toml`.
 - The only accepted risks left are BouncyCastle/OpenTelemetry advisories that exist on Kotlin
@@ -79,9 +79,10 @@ shared store, which this best-effort tier does not claim.
   configured, and enabling it naively would let a client rotate `X-Forwarded-For`.
 - Build-tool-only BouncyCastle and OpenTelemetry advisories are documented and ignored; they are
   reachable only from the Kotlin compiler's own classpaths.
-- Boot 4 keeps the services on a Jackson 2 mapper while HTTP serialization uses Jackson 3. That
-  split is deliberate and covered by the HTTP tests; a later cleanup can move the services fully
-  to Jackson 3.
+- Boot 4 keeps the services on a Jackson 2 mapper while HTTP serialization uses Jackson 3. The
+  application parses request bodies explicitly with the Jackson 2 mapper, so no `@RequestBody`
+  binding depends on the Jackson 3 converter; a later cleanup can move the services fully to
+  Jackson 3 and add `tools.jackson.module:jackson-module-kotlin`.
 - R-1 is closed: the Spring Framework 7 / Boot 4 upgrade shipped, and the migration record is
   [spring-7-upgrade.md](../operations/spring-7-upgrade.md).
 - The avatar cross-scope attack is deferred behind W-11.

@@ -19,13 +19,6 @@ class ProfileServiceConfiguration {
     @Bean
     fun clock(): java.time.Clock = java.time.Clock.systemUTC()
 
-    /**
-     * The services use Jackson 2 explicitly. Boot 4 auto-configures Jackson 3 for HTTP, so this
-     * bean gives the services a mapper without colliding with Boot's `objectMapper` name.
-     */
-    @Bean
-    fun umsObjectMapper(): ObjectMapper = com.fasterxml.jackson.module.kotlin.jacksonObjectMapper()
-        .configure(com.fasterxml.jackson.databind.DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, true)
 
     @Bean
     fun privacyMaximumStrongAge(environment: Environment): java.time.Duration =

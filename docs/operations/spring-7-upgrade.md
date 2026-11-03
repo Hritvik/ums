@@ -3,6 +3,9 @@
 Status: **complete** — the upgrade shipped; the two `spring-webmvc` ignores are removed and
 `osv-scanner` reports no issues.
 
+Lockfiles are refreshed with `./gradlew resolveAndLockAll --write-locks`, which resolves the Kotlin
+metadata configurations too, so a stale Spring version cannot survive a relock.
+
 Result: 351 JVM tests green, `CI=true ./gradlew securityAudit` passes, runtime Spring 7.0.10 on
 Boot 4.0.9, Gradle 8.14.3.
 
