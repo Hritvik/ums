@@ -149,6 +149,16 @@ class MaintenanceWorkerTest {
         assertThat(alertSignals.snapshot?.failedRetentionSweeps).isZero()
     }
 
+    @Test fun `a worker with no registered applications does nothing`() {
+        jdbc.execute("truncate ums_profile_bindings cascade")
+
+        val result = worker.run()
+
+        assertThat(result.skipped).isFalse()
+        assertThat(result.finalized).isZero()
+        assertThat(result.noticesScheduled).isZero()
+    }
+
     @Test fun `the schedulers run the worker and the alerts`() {
         requestDeletion()
         clock.advance(Duration.ofDays(31))

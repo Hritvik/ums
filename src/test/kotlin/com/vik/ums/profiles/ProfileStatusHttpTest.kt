@@ -626,6 +626,34 @@ class ProfileStatusHttpTest {
         }
     }
 
+    @Test fun `privacy commands reject a non-uuid target and extra body fields`() {
+        authenticate()
+        mockMvc.perform(post("/api/v1/profile/deletion-requests/not-a-uuid/cancellation")
+            .contentType(MediaType.APPLICATION_JSON).header("Idempotency-Key", uuid())
+            .content("""{"expectedVersion":1}"""))
+            .andExpect(status().isNotFound)
+        mockMvc.perform(post("/api/v1/profile/deletion-requests")
+            .contentType(MediaType.APPLICATION_JSON).header("Idempotency-Key", uuid())
+            .content("""{"expectedVersion":1,"purpose":"REQUEST_DELETION"}"""))
+            .andExpect(status().isBadRequest)
+        mockMvc.perform(post("/api/v1/profile/deletion-requests")
+            .contentType(MediaType.APPLICATION_JSON).header("Idempotency-Key", uuid())
+            .content("""{"expectedVersion":0}"""))
+            .andExpect(status().isBadRequest)
+    }
+
+    @Test fun `privacy commands reject a body that is too large or not JSON`() {
+        authenticate()
+        mockMvc.perform(post("/api/v1/profile/deletion-requests")
+            .contentType(MediaType.APPLICATION_JSON).header("Idempotency-Key", uuid())
+            .content("{\"expectedVersion\":1,\"padding\":\"" + "x".repeat(20_000) + "\"}"))
+            .andExpect(status().isBadRequest)
+        mockMvc.perform(post("/api/v1/profile/deletion-requests")
+            .contentType(MediaType.TEXT_PLAIN).header("Idempotency-Key", uuid())
+            .content("""{"expectedVersion":1}"""))
+            .andExpect(status().isBadRequest)
+    }
+
     @Test fun `an unauthenticated request is refused before the handler`() {
         SecurityContextHolder.getContext().authentication =
             UsernamePasswordAuthenticationToken("anonymous", null, emptyList())
