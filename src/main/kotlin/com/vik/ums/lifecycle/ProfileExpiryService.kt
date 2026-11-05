@@ -98,9 +98,4 @@ class ProfileExpiryService(
         ExpiryResult(ExpiryOutcome.EXPIRED, after)
     }!!
 
-    /** False when an avatar association still exists, so erasure cannot drop the only pointer. */
-    private fun contentAuthorized(scope: ProfileScope): Boolean =
-        jdbc.queryForObject("""select avatar_reference is null from ums_profile_bindings
-            where issuer_environment_ref = ? and app_reference = ? and subject_reference = ?""",
-            Boolean::class.java, scope.issuerEnvironmentRef, scope.appReference, scope.subjectReference) == true
-}
+    /** False when an avatar association still exists, so erasure cannot drop the only pointer. */}

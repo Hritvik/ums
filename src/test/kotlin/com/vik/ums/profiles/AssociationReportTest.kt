@@ -198,8 +198,8 @@ class AssociationReportTest {
         jdbc.update("""insert into ums_profile_erasure_obligations
             (fence_reference, issuer_environment_ref, app_reference, subject_reference, obligation_kind,
              retired_profile_reference, retired_generation, obligation_at, erased_binding_revision, erased_at,
-             content_obligation)
-            values (?, ?, ?, ?, 'APP_DELETION', ?, 1, now(), ?, now(), true)""",
+             content_obligation, content_state, content_reference)
+            values (?, ?, ?, ?, 'APP_DELETION', ?, 1, now(), ?, now(), true, 'PENDING', 'asset_0123456789abcdef')""",
             UUID.randomUUID(), issuer, app, subject, UUID.randomUUID(), revision())
 
         AssociationReports(jdbc, mapper, "test", clock).emit(

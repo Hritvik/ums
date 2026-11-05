@@ -36,22 +36,25 @@ class HttpContentAuthority(
         val ownerApp = response["appRegistrationId"]?.asText()
         val ownerSubject = response["appSubject"]?.asText()
         return when {
-            valid && state == "READY" && ownerApp == identity.first && ownerSubject == identity.second ->
-                ContentVerdict.VALID
+            // An outage is never a revocation, even when the owner also reports valid:false.
+            state == "UNAVAILABLE" -> ContentVerdict.UNAVAILABLE
             state == "REVOKED" -> ContentVerdict.REVOKED
             !valid -> ContentVerdict.REVOKED
             ownerApp != identity.first || ownerSubject != identity.second -> ContentVerdict.OWNER_MISMATCH
+            state == "READY" -> ContentVerdict.VALID
             else -> ContentVerdict.UNAVAILABLE
         }
     }
 
     override fun requestCleanup(reference: String, scope: ProfileScope): Boolean {
         val identity = identity(scope) ?: return false
-        return post("cleanup-requests", mapOf(
+        val response = post("cleanup-requests", mapOf(
             "reference" to reference,
             "appRegistrationId" to identity.first,
             "appSubject" to identity.second,
-        )) != null
+        )) ?: return false
+        // An acknowledgement ("accepted", 202) is not a confirmation; only an explicit answer is.
+        return response["confirmed"]?.asBoolean() == true
     }
 
     private fun identity(scope: ProfileScope): Pair<String, String>? =

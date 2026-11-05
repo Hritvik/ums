@@ -75,7 +75,17 @@ class ProfileFinalizationService(
             (fence_reference, issuer_environment_ref, app_reference, subject_reference, obligation_kind,
              cause_reference, retired_profile_reference, retired_generation, obligation_at, superseded_causes,
              erased_binding_revision, erased_at, content_obligation, content_state, content_reference)
-            values (?, ?, ?, ?, 'APP_DELETION', ?, ?, ?, ?, ?::jsonb, ?, ?, ?, ?, ?)""",
+            values (?, ?, ?, ?, 'APP_DELETION', ?, ?, ?, ?, ?::jsonb, ?, ?, ?, ?, ?)
+            on conflict (retired_profile_reference) do update set
+                obligation_kind = excluded.obligation_kind,
+                cause_reference = excluded.cause_reference,
+                obligation_at = excluded.obligation_at,
+                superseded_causes = excluded.superseded_causes,
+                erased_binding_revision = excluded.erased_binding_revision,
+                erased_at = excluded.erased_at,
+                content_obligation = excluded.content_obligation,
+                content_state = excluded.content_state,
+                content_reference = excluded.content_reference""",
             UUID.randomUUID(), scope.issuerEnvironmentRef, scope.appReference, scope.subjectReference,
             request.reference, request.profileReference, request.generation.toLong(), Timestamp.from(request.acceptedAt),
             superseded, revision, Timestamp.from(clock.instant()),

@@ -127,13 +127,14 @@ internal class AssociationReports(
             state.scope.issuerEnvironmentRef, state.scope.appReference, state.scope.subjectReference)
             .singleOrNull()
 
+    /** True only while cleanup is still owed; a confirmed or absent debt is not owed. */
     private fun contentObligation(state: BindingState): Boolean =
-        jdbc.query("""select content_obligation from ums_profile_erasure_obligations
+        jdbc.query("""select content_state from ums_profile_erasure_obligations
             where issuer_environment_ref = ? and app_reference = ? and subject_reference = ?
             order by erased_at desc limit 1""",
-            { rs: ResultSet, _: Int -> rs.getBoolean(1) },
+            { rs: ResultSet, _: Int -> rs.getString(1) },
             state.scope.issuerEnvironmentRef, state.scope.appReference, state.scope.subjectReference)
-            .singleOrNull() ?: false
+            .singleOrNull()?.let { it == "PENDING" || it == "FAILED" } ?: false
 
     /**
      * A reason describes the transition, not always the resulting state: a cancellation while a

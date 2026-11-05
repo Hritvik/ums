@@ -49,11 +49,13 @@ class ContentAttachmentTest {
     private lateinit var deletion: ProfileDeletionService
     private lateinit var finalizer: ProfileFinalizationService
 
-    private class StubAuthority(var cleanupSucceeds: Boolean = true) : ContentAuthority {
+    private class StubAuthority(
+        var cleanupSucceeds: Boolean = true,
+        var verdict: ContentVerdict = ContentVerdict.VALID,
+    ) : ContentAuthority {
         val cleaned = mutableListOf<Pair<String, ProfileScope>>()
 
-        override fun check(reference: String, scope: ProfileScope): ContentVerdict =
-            if (ContentReference.PATTERN.matches(reference)) ContentVerdict.VALID else ContentVerdict.REVOKED
+        override fun check(reference: String, scope: ProfileScope): ContentVerdict = verdict
 
         override fun requestCleanup(reference: String, scope: ProfileScope): Boolean {
             cleaned += reference to scope
@@ -92,6 +94,9 @@ class ContentAttachmentTest {
 
     private fun revision(): Long = jdbc.queryForObject(
         "select profile_revision from ums_profile_bindings where subject_reference = ?", Long::class.java, subject)!!
+
+    private fun bindingRevision(): Long = jdbc.queryForObject(
+        "select binding_revision from ums_profile_bindings where subject_reference = ?", Long::class.java, subject)!!
 
     private fun attach(attachment: TrustedContentAttachment?) {
         editing.patch(TrustedHumanAuthority(scope, UUID.randomUUID(), setOf(HumanAction.EDIT)),
@@ -207,6 +212,77 @@ class ContentAttachmentTest {
             .isEqualTo("IAM_GLOBAL:CONFIRMED:$reference")
         assertThat(jdbc.queryForObject("select avatar_reference from ums_profile_bindings where subject_reference = ?",
             String::class.java, subject)).isNull()
+    }
+
+    @Test fun `an app-only erase completes after a blocked global final`() {
+        attach(TrustedContentAttachment(reference, scope))
+        val global = ProfileGlobalDeletionService(jdbc, transactions, mapper, "test", clock)
+        val provider = TrustedProviderAuthority(AppScope(issuer, app), UUID.randomUUID())
+        global.applyPending(provider, GlobalPendingFact(scope, 1, clock.instant(),
+            clock.instant().plus(Duration.ofDays(30)), UUID.randomUUID(), "global"))
+        assertThat(global.finalize(provider, GlobalFinalFact(scope, 2, clock.instant(),
+            UUID.randomUUID(), "global")).outcome).isEqualTo(GlobalDeletionOutcome.CONTENT_BLOCKED)
+
+        val accepted = deletion.request(TrustedPrivacyAuthority(scope, UUID.randomUUID(),
+            PrivacyPurpose.REQUEST_DELETION, clock.instant(), true, clock.instant().plus(Duration.ofMinutes(5))),
+            DeletionRequestCommand(UUID.randomUUID(), bindingRevision(), "content"))
+        clock.advance(Duration.ofDays(30))
+
+        finalizer.finalize(TrustedMaintenanceAuthority(AppScope(issuer, app), UUID.randomUUID(),
+            MaintenancePurpose.FINALIZE_APP_DELETION), scope, accepted.operationReference, "content")
+        assertThat(jdbc.queryForObject("select lifecycle from ums_profile_bindings where subject_reference = ?",
+            String::class.java, subject)).isEqualTo("ERASED")
+        assertThat(jdbc.queryForObject("""select obligation_kind || ':' || content_state || ':' || content_reference
+            from ums_profile_erasure_obligations""", String::class.java))
+            .isEqualTo("APP_DELETION:PENDING:$reference")
+    }
+
+    @Test fun `a replacement avatar needs its own cleanup before the blocked final proceeds`() {
+        attach(TrustedContentAttachment(reference, scope))
+        val global = ProfileGlobalDeletionService(jdbc, transactions, mapper, "test", clock)
+        val provider = TrustedProviderAuthority(AppScope(issuer, app), UUID.randomUUID())
+        global.applyPending(provider, GlobalPendingFact(scope, 1, clock.instant(),
+            clock.instant().plus(Duration.ofDays(30)), UUID.randomUUID(), "global"))
+        val fact = GlobalFinalFact(scope, 2, clock.instant(), UUID.randomUUID(), "global")
+        assertThat(global.finalize(provider, fact).outcome).isEqualTo(GlobalDeletionOutcome.CONTENT_BLOCKED)
+
+        // The owner confirms the first asset, but a patch that raced the pending transition
+        // already replaced it with a new one.
+        jdbc.update("update ums_profile_erasure_obligations set content_state = 'CONFIRMED'")
+        val replacement = "asset_9876543210fedcba"
+        jdbc.update("update ums_profile_bindings set avatar_reference = ? where subject_reference = ?",
+            replacement, subject)
+
+        assertThat(global.finalize(provider, fact).outcome).isEqualTo(GlobalDeletionOutcome.CONTENT_BLOCKED)
+        assertThat(jdbc.queryForObject("""select content_state || ':' || content_reference from
+            ums_profile_erasure_obligations""", String::class.java)).isEqualTo("PENDING:$replacement")
+    }
+
+    @Test fun `a revoked or foreign association is cleared by the repair sweep`() {
+        attach(TrustedContentAttachment(reference, scope))
+        val pivot = revision()
+
+        assertThat(ContentAssociationRepair(jdbc, transactions, mapper, "test",
+            StubAuthority(verdict = ContentVerdict.UNAVAILABLE), clock).run()).isZero()
+        assertThat(jdbc.queryForObject("select avatar_reference from ums_profile_bindings where subject_reference = ?",
+            String::class.java, subject)).isEqualTo(reference)
+
+        assertThat(ContentAssociationRepair(jdbc, transactions, mapper, "test",
+            StubAuthority(verdict = ContentVerdict.REVOKED), clock).run()).isEqualTo(1)
+        assertThat(jdbc.queryForObject("select avatar_reference from ums_profile_bindings where subject_reference = ?",
+            String::class.java, subject)).isNull()
+        assertThat(jdbc.queryForObject(
+            "select profile_revision from ums_profile_bindings where subject_reference = ?", Long::class.java, subject))
+            .isEqualTo(pivot + 1)
+        assertThat(jdbc.queryForObject("""select count(*) from ums_event_outbox
+            where event_type = 'ums.profile.state-changed.v1'
+              and payload->>'correlationId' = 'content-repair'""", Int::class.java)).isEqualTo(1)
+
+        attach(TrustedContentAttachment(reference, scope))
+        assertThat(ContentAssociationRepair(jdbc, transactions, mapper, "test",
+            StubAuthority(verdict = ContentVerdict.OWNER_MISMATCH), clock).run()).isEqualTo(1)
+        assertThat(jdbc.queryForObject("select count(*) from ums_content_cleanup_requests",
+            Int::class.java)).isZero()
     }
 
     @Test fun `an exhausted cleanup budget releases the blocked final with a failed debt`() {

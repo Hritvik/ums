@@ -352,7 +352,7 @@ gated on the contract fixtures both sides still have to validate.
 **References.**
 - **Plan decisions** — [Avatar enablement gate](../ums-platform/issues/08-define-verification-and-implementation-handoff.md#release-gates) conditions the capability on an accepted provider contract. [Erasure, assets, projections, and backups](../ums-platform/issues/03-define-profile-lifecycle-boundaries.md#erasure-assets-projections-and-backups) governs ownership and cleanup claims.
 - **Contract** — [profile-patch.json](../../contracts/v1/schemas/profile-patch.json) fixes the wire form of an avatar reference; the provider contract is authored here.
-- **Repo doc** — [profile-editing.md](profile-editing.md) for the current rejection behavior being replaced.
+- **Repo doc** — [content-attachment.md](content-attachment.md) for the implemented seam, retries, and remaining gates; [profile-editing.md](profile-editing.md) for the patch rules.
 
 **Acceptance criteria.**
 - [x] A versioned content contract exists covering reference format, attach, revoke, ownership check, and cleanup confirmation. Fixtures both sides validate remain outstanding.

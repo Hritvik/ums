@@ -14,7 +14,10 @@ data class TrustedContentAttachment(val reference: String, val scope: ProfileSco
 interface ContentAuthority {
     fun check(reference: String, scope: ProfileScope): ContentVerdict
 
-    /** True only when the owner confirmed cleanup; false leaves the obligation pending. */
+    /**
+     * True only when the owner explicitly confirmed cleanup (`confirmed: true`); a transport-level
+     * acknowledgement is not confirmation, so false leaves the obligation pending.
+     */
     fun requestCleanup(reference: String, scope: ProfileScope): Boolean
 }
 

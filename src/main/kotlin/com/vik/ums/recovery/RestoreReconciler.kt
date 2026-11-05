@@ -101,7 +101,16 @@ class RestoreReconciler(
              cause_reference, retired_profile_reference, retired_generation, obligation_at,
              erased_binding_revision, erased_at, content_obligation, content_state, content_reference)
             values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            on conflict (retired_profile_reference) do nothing""",
+            on conflict (retired_profile_reference) do update set
+                obligation_kind = excluded.obligation_kind,
+                cause_reference = excluded.cause_reference,
+                obligation_at = excluded.obligation_at,
+                superseded_causes = excluded.superseded_causes,
+                erased_binding_revision = excluded.erased_binding_revision,
+                erased_at = excluded.erased_at,
+                content_obligation = excluded.content_obligation,
+                content_state = excluded.content_state,
+                content_reference = excluded.content_reference""",
             UUID.randomUUID(), scope.issuerEnvironmentRef, scope.appReference, scope.subjectReference,
             entry.obligationKind, entry.causeReference, entry.retiredProfileReference, entry.retiredGeneration,
             Timestamp.from(entry.erasedAt), revision, Timestamp.from(entry.erasedAt),

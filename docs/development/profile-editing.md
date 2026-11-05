@@ -21,7 +21,8 @@ already resolved local permissions; they are not tokens or proof of IAM authorit
   configured rejects attachments. Explicit clearing is supported, subject to the
   same field permissions; clearing or replacing an avatar commits a durable cleanup
   request for the previous reference, which the content worker confirms with the
-  owner.
+  owner. See [content attachment](content-attachment.md) for the seam, retries, and
+  remaining gates.
 - Actual field changes increment profile and binding revisions once, recompute
   readiness from explicit stored values, and publish one minimized canonical
   FIELDS_CHANGED event. No-op patches record their receipt without a revision

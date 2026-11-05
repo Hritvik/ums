@@ -126,10 +126,15 @@ class ProfileGlobalDeletionService(
                 { rs, _ -> Triple(rs.getString(1), rs.getString(2), rs.getString(3)) },
                 fact.scope.issuerEnvironmentRef, fact.scope.appReference, fact.scope.subjectReference).single()
             val association = content.first
-            // A debt recorded by an earlier blocked attempt survives an out-of-band clear.
-            val contentReference = association ?: content.second
+            val fenceReference = content.second
             val contentState = content.third
-            if (association != null && contentState != "CONFIRMED" && contentState != "FAILED") {
+            val settled = contentState == "CONFIRMED" || contentState == "FAILED"
+            // A settled fence only covers the association it was written for; a replacement
+            // avatar needs its own cleanup before the final can proceed.
+            val associationSettled = association != null && settled && fenceReference == association
+            // A debt recorded by an earlier blocked attempt survives an out-of-band clear.
+            val contentReference = association ?: fenceReference
+            if (association != null && !associationSettled) {
                 lifecycle.recordBlockedFinal(fact.scope, fact.eventId, current.profileReference!!,
                     current.generation!!.toLong(), fact.occurredAt, current.bindingRevision.toLong(),
                     clock.instant(), association)
@@ -152,7 +157,8 @@ class ProfileGlobalDeletionService(
             markPendingRequestsSuperseded(fact.scope)
             lifecycle.recordErasedObligation(fact.scope, "IAM_GLOBAL", fact.eventId, current.profileReference!!,
                 current.generation!!.toLong(), fact.occurredAt, superseded, revision, clock.instant(),
-                contentReference, contentState ?: if (contentReference != null) "PENDING" else "NONE")
+                contentReference, if (associationSettled) contentState else
+                    if (contentReference != null) "PENDING" else "NONE")
             invalidateExportsFor(jdbc, fact.scope, clock.instant())
             suppressNotices(jdbc, mapper, environment, fact.scope, fact.correlationId, clock.instant())
             lifecycle.recordEvidence(fact.scope, "GLOBAL_ERASED", revision, fact.occurredAt, null,

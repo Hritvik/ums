@@ -111,7 +111,11 @@ internal class LifecyclePersistence(private val jdbc: JdbcTemplate) {
              cause_reference, retired_profile_reference, retired_generation, obligation_at, superseded_causes,
              erased_binding_revision, erased_at, content_obligation, content_state, content_reference)
             values (?, ?, ?, ?, 'IAM_GLOBAL_BLOCKED', ?, ?, ?, ?, '[]'::jsonb, ?, ?, true, 'PENDING', ?)
-            on conflict (retired_profile_reference) do nothing""",
+            on conflict (retired_profile_reference) do update set
+                content_reference = excluded.content_reference,
+                content_state = 'PENDING',
+                content_attempts = 0,
+                content_failure_class = null""",
             UUID.randomUUID(), scope.issuerEnvironmentRef, scope.appReference, scope.subjectReference,
             causeReference, retiredProfileReference, retiredGeneration, Timestamp.from(obligationAt),
             revision, Timestamp.from(blockedAt), contentReference)

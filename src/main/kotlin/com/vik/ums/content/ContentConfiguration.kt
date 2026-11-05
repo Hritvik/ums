@@ -14,9 +14,13 @@ import java.time.Duration
 class ContentConfiguration {
     @Bean
     fun contentCleanupWorker(jdbc: JdbcTemplate, authority: ContentAuthority,
-                             environment: Environment): ContentCleanupWorker =
+                             transactions: org.springframework.transaction.support.TransactionTemplate,
+                             mapper: ObjectMapper, environment: Environment,
+                             clock: java.time.Clock): ContentCleanupWorker =
         ContentCleanupWorker(jdbc, authority,
-            environment.getProperty("ums.content.cleanup.max-attempts", "8").toInt())
+            environment.getProperty("ums.content.cleanup.max-attempts", "8").toInt(),
+            ContentAssociationRepair(jdbc, transactions, mapper,
+                environment.getRequiredProperty("ums.environment"), authority, clock)::run)
 
     @Bean
     @ConditionalOnProperty(name = ["ums.content.authority-uri"])
@@ -61,6 +65,7 @@ class ContentCleanupWorker(
     private val jdbc: JdbcTemplate,
     private val authority: ContentAuthority,
     private val maxAttempts: Int = 8,
+    private val repair: (() -> Int)? = null,
 ) {
     /** Confirms cleanup for every pending debt, including a global final still blocked by one. */
     fun run(limit: Int = 50): Int {
@@ -88,7 +93,7 @@ class ContentCleanupWorker(
                     entry.fence)
             }
         }
-        return confirmed + confirmClearedAvatars(limit)
+        return confirmed + confirmClearedAvatars(limit) + (repair?.invoke() ?: 0)
     }
 
     /** Confirms cleanup for avatars dropped by an explicit clear or a replacement. */

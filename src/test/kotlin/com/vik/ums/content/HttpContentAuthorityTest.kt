@@ -43,6 +43,7 @@ class HttpContentAuthorityTest {
     private val app = UUID.randomUUID()
     private val scope = ProfileScope(issuer, app, UUID.randomUUID())
     private lateinit var jdbc: JdbcTemplate
+    private lateinit var dataSource: DriverManagerDataSource
     private lateinit var server: HttpServer
     private var reply: (String) -> Pair<Int, String> = { 500 to "" }
     private var seenAuthorization: String? = null
@@ -50,6 +51,7 @@ class HttpContentAuthorityTest {
 
     @BeforeEach fun setup() {
         val ds = DriverManagerDataSource(postgres.jdbcUrl, postgres.username, postgres.password)
+        dataSource = ds
         Flyway.configure().dataSource(ds).load().migrate()
         jdbc = JdbcTemplate(ds)
         val transactions = TransactionTemplate(DataSourceTransactionManager(ds))
@@ -111,6 +113,10 @@ class HttpContentAuthorityTest {
 
         ownership("""{"state":"READY"}""")
         assertThat(authority().check("asset_0123456789abcdef", scope)).isEqualTo(ContentVerdict.REVOKED)
+
+        // An outage is never a revocation, even when the owner also reports valid:false.
+        ownership("""{"valid":false,"state":"UNAVAILABLE"}""")
+        assertThat(authority().check("asset_0123456789abcdef", scope)).isEqualTo(ContentVerdict.UNAVAILABLE)
     }
 
     @Test fun `an unavailable or failing authority never authorizes anything`() {
@@ -128,8 +134,14 @@ class HttpContentAuthorityTest {
         assertThat(refused.requestCleanup("asset_0123456789abcdef", scope)).isFalse()
     }
 
-    @Test fun `cleanup is confirmed only on a successful owner answer`() {
-        ownership("""{"accepted":true}""")
+    @Test fun `cleanup requires an explicit confirmation, not an acknowledgement`() {
+        ownership("""{"accepted":true}""", status = 202)
+        assertThat(authority().requestCleanup("asset_0123456789abcdef", scope)).isFalse()
+
+        ownership("""{"confirmed":false}""")
+        assertThat(authority().requestCleanup("asset_0123456789abcdef", scope)).isFalse()
+
+        ownership("""{"confirmed":true}""")
         assertThat(authority().requestCleanup("asset_0123456789abcdef", scope)).isTrue()
         assertThat(seenBody).contains("asset_0123456789abcdef")
 
@@ -164,10 +176,13 @@ class HttpContentAuthorityTest {
         fence(UUID.randomUUID(), "FAILED")
 
         val configuration = ContentConfiguration()
-        val worker = configuration.contentCleanupWorker(jdbc, StubAuthority(true), MockEnvironment())
+        val transactions = TransactionTemplate(DataSourceTransactionManager(dataSource))
+        val worker = configuration.contentCleanupWorker(jdbc, StubAuthority(true), transactions, mapper,
+            MockEnvironment().withProperty("ums.environment", "test"), java.time.Clock.systemUTC())
         assertThat(worker.run()).isEqualTo(1)
-        assertThat(configuration.contentCleanupWorker(jdbc, StubAuthority(false),
-            MockEnvironment().withProperty("ums.content.cleanup.max-attempts", "3"))).isNotNull()
+        assertThat(configuration.contentCleanupWorker(jdbc, StubAuthority(false), transactions, mapper,
+            MockEnvironment().withProperty("ums.environment", "test")
+                .withProperty("ums.content.cleanup.max-attempts", "3"), java.time.Clock.systemUTC())).isNotNull()
         configuration.contentCleanupScheduler(worker).run()
 
         val registry = SimpleMeterRegistry()
