@@ -241,7 +241,7 @@ Five provider inputs do not exist yet and are carried as named gaps rather than 
 
 **Summary.** Dutch keeps its own member records and needs to know which UMS profile belongs to which member. No such contract exists, so the integration cannot be built. This item establishes it with Dutch as the owning party and connects the two sides without moving any Dutch rules into UMS.
 
-**Status.** Green — implemented and verified; awaiting review. See [association report](association-report.md) and the central evidence file.
+**Status.** Integrated — see [association report](association-report.md) and the central evidence file.
 [association-report-v1.md](../contracts/proposed/association-report-v1.md) (2026-11-05); the retired
 `ums.member.mapping.changed.v1` event is not revived.
 
