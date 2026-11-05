@@ -150,7 +150,7 @@ internal class AssociationReports(
 
     private companion object {
         const val EVENT_TYPE = "ums.profile.association-report.v1"
-        val APP_SUBJECT = Regex("^aps_[A-Za-z0-9_-]{19,128}$")
+        val APP_SUBJECT = Regex("^aps_[A-Za-z0-9_-]{18,128}$")
         val REGISTRATION = Regex("^[a-z][a-z0-9-]{2,63}$")
         val ENVELOPE_ID = Regex("^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$")
         val log = LoggerFactory.getLogger(AssociationReports::class.java)

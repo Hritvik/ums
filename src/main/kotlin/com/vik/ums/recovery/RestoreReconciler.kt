@@ -69,12 +69,13 @@ class RestoreReconciler(
 
     private fun apply(entry: ErasureEntry, position: Long): Outcome {
         val scope = entry.scope
-        val current = jdbc.query("""select binding_revision, lifecycle, generation
+        val current = jdbc.query("""select binding_revision, lifecycle, generation,
+                avatar_reference is not null
             from ums_profile_bindings
             where issuer_environment_ref = ? and app_reference = ? and subject_reference = ?
             for update""", { rs: ResultSet, _: Int ->
             val generation = rs.getLong(3).let { if (rs.wasNull()) null else it }
-            Binding(rs.getLong(1), Lifecycle.valueOf(rs.getString(2)), generation)
+            Binding(rs.getLong(1), Lifecycle.valueOf(rs.getString(2)), generation, rs.getBoolean(4))
         }, scope.issuerEnvironmentRef, scope.appReference, scope.subjectReference).singleOrNull()
             ?: run { advance(position); return Outcome.MISSING }
         if (current.lifecycle == Lifecycle.ERASED) {
@@ -98,12 +99,12 @@ class RestoreReconciler(
         jdbc.update("""insert into ums_profile_erasure_obligations
             (fence_reference, issuer_environment_ref, app_reference, subject_reference, obligation_kind,
              cause_reference, retired_profile_reference, retired_generation, obligation_at,
-             erased_binding_revision, erased_at)
-            values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             erased_binding_revision, erased_at, content_obligation)
+            values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             on conflict (retired_profile_reference) do nothing""",
             UUID.randomUUID(), scope.issuerEnvironmentRef, scope.appReference, scope.subjectReference,
             entry.obligationKind, entry.causeReference, entry.retiredProfileReference, entry.retiredGeneration,
-            Timestamp.from(entry.erasedAt), revision, Timestamp.from(entry.erasedAt))
+            Timestamp.from(entry.erasedAt), revision, Timestamp.from(entry.erasedAt), current.contentObligation)
         // The journal only carries erasures that passed the content-authority guard when they were
         // first acknowledged, so replaying one cannot orphan a live provider asset.
         // A restored pending request must not be finalizable or cancellable after the erasure.
@@ -124,7 +125,8 @@ class RestoreReconciler(
         return Outcome.ERASED
     }
 
-    private data class Binding(val bindingRevision: Long, val lifecycle: Lifecycle, val generation: Long?)
+    private data class Binding(val bindingRevision: Long, val lifecycle: Lifecycle,
+                               val generation: Long?, val contentObligation: Boolean)
 
     private enum class Outcome { ERASED, ALREADY_ERASED, NEWER_GENERATION, MISSING }
 

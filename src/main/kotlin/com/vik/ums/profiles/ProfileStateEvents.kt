@@ -10,7 +10,7 @@ internal class ProfileStateEvents(
     private val jdbc: JdbcTemplate, private val mapper: ObjectMapper, private val environment: String, private val clock: Clock,
 ) {
     private val association = AssociationReports(jdbc, mapper, environment, clock)
-    init { require(environment.matches(Regex("[a-z0-9-]{1,32}"))) }
+    init { require(environment in setOf("development", "test", "staging", "production")) }
     fun emit(state: BindingState, reason: String, causationId: UUID, correlationId: String) {
         val eventId = UUID.randomUUID()
         val occurredAt = Instant.now(clock)

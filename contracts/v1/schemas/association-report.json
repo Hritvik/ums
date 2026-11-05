@@ -63,7 +63,7 @@
         },
         "id": {
           "type": "string",
-          "pattern": "^aps_[A-Za-z0-9_-]{19,128}$"
+          "pattern": "^aps_[A-Za-z0-9_-]{18,128}$"
         },
         "version": {
           "type": "integer",
@@ -96,7 +96,7 @@
       "properties": {
         "appSubject": {
           "type": "string",
-          "pattern": "^aps_[A-Za-z0-9_-]{19,128}$"
+          "pattern": "^aps_[A-Za-z0-9_-]{18,128}$"
         },
         "profileState": {
           "enum": [

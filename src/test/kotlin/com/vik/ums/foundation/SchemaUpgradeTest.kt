@@ -133,6 +133,8 @@ class SchemaUpgradeTest {
         assertThat(jdbc.queryForObject("""select lifecycle || ':' || (profile_reference is null)
             from ums_profile_bindings where subject_reference = ?""", String::class.java, erasedSubject))
             .isEqualTo("ERASED:true")
+        assertThat(jdbc.queryForObject("select count(*) from ums_profile_association_state",
+            Int::class.java)).isEqualTo(2)
         assertThat(jdbc.queryForObject("""select status || ':' || generation || ':' ||
                 (deadline = accepted_at + interval '720 hours')
             from ums_profile_deletion_requests where request_reference = ?""", String::class.java, pendingRequest))

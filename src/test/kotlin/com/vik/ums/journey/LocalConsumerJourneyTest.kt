@@ -50,6 +50,50 @@ class LocalConsumerJourneyTest {
             TrustedIamSource(app.issuerEnvironmentRef, "test"), mapOf("dutch-development" to app))
     }
 
+    @Test fun `the local Dutch consumer correlates by app subject and refuses a tombstone`() {
+        adapter.consume(input(), "dutch-development")
+        val consumer = LocalAssociationConsumer()
+        val active = mapper.readTree(jdbc.queryForObject("""select payload::text from ums_event_outbox
+            where event_type = 'ums.profile.association-report.v1' order by occurred_at limit 1""",
+            String::class.java)!!)
+        assertThat(consumer.deliver(active)).isEqualTo("ASSOCIATED")
+        assertThat(consumer.memberFor(active["payload"]["appSubject"].asText())).isEqualTo("mem_local_1")
+        assertThat(consumer.deliver(active)).isEqualTo("DUPLICATE")
+
+        val erased = mapper.readTree(active.toString())
+        (erased["payload"] as com.fasterxml.jackson.databind.node.ObjectNode).apply {
+            put("lifecycleState", "ERASED")
+            remove("generation")
+            remove("profileRevision")
+            put("retiredGeneration", 1)
+        }
+        assertThat(consumer.deliver(erased)).isEqualTo("REFUSED")
+        assertThat(consumer.memberFor(erased["payload"]["appSubject"].asText())).isNull()
+    }
+
+    /** The Dutch reference consumer in miniature: app subject in, member mapping out. */
+    private class LocalAssociationConsumer {
+        private val mappings = mutableMapOf<String, String>()
+
+        fun deliver(report: com.fasterxml.jackson.databind.JsonNode): String {
+            val subject = report["payload"]["appSubject"].asText()
+            return when (report["payload"]["lifecycleState"].asText()) {
+                "ERASED" -> {
+                    mappings.remove(subject)
+                    "REFUSED"
+                }
+                "ACTIVE" -> if (mappings.containsKey(subject)) "DUPLICATE"
+                else {
+                    mappings[subject] = "mem_local_1"
+                    "ASSOCIATED"
+                }
+                else -> "IGNORED"
+            }
+        }
+
+        fun memberFor(subject: String): String? = mappings[subject]
+    }
+
     @Test fun `strict profile journey keeps Dutch member identity and Ledger authority product-owned`() {
         val consumer = SimulatedDutchConsumer(app, "test")
         assertThat(consumer.state()).isEqualTo("WAIT")

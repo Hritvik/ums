@@ -4,6 +4,9 @@ import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import com.vik.ums.lifecycle.ProfileClosureService
 import com.vik.ums.lifecycle.TrustedClosureFact
 import com.vik.ums.privacy.DeletionCancellationCommand
+import com.vik.ums.privacy.GlobalPendingFact
+import com.vik.ums.privacy.ProfileGlobalDeletionService
+import com.vik.ums.privacy.TrustedProviderAuthority
 import com.vik.ums.recovery.ErasureFeed
 import com.vik.ums.privacy.DeletionRequestCommand
 import com.vik.ums.privacy.MaintenancePurpose
@@ -166,6 +169,44 @@ class AssociationReportTest {
         assertThat(erased["payload"].has("profileRevision")).isFalse()
         assertThat(erased["payload"]["contentObligation"].asBoolean()).isFalse()
         write("association-report-erased", erased)
+    }
+
+    @Test fun `a cancellation that leaves the profile restricted is not reported active`() {
+        ProfileGlobalDeletionService(jdbc, transactions, mapper, "test", clock).applyPending(
+            TrustedProviderAuthority(AppScope(issuer, app), UUID.randomUUID()),
+            GlobalPendingFact(scope, 1, clock.instant(), clock.instant().plus(Duration.ofDays(30)),
+                UUID.randomUUID(), "association"))
+        deletion.request(TrustedPrivacyAuthority(scope, UUID.randomUUID(), PrivacyPurpose.REQUEST_DELETION,
+            clock.instant(), true, clock.instant().plus(Duration.ofMinutes(5))),
+            DeletionRequestCommand(UUID.randomUUID(), revision(), "association"))
+        val appRequest = jdbc.queryForObject("""select request_reference from ums_profile_deletion_requests
+            where subject_reference = ? and status = 'PENDING'""", UUID::class.java, subject)!!
+
+        deletion.cancel(TrustedPrivacyAuthority(scope, UUID.randomUUID(), PrivacyPurpose.CANCEL_DELETION,
+            clock.instant(), true, clock.instant().plus(Duration.ofMinutes(5))),
+            DeletionCancellationCommand(appRequest, UUID.randomUUID(), revision(), "association"))
+
+        val cancelled = reports().last()["payload"]
+        assertThat(cancelled["lifecycleState"].asText()).isEqualTo("DELETION_PENDING")
+        assertThat(cancelled.has("lifecycleReason")).isFalse()
+    }
+
+    @Test fun `a content debt is reported when the obligation records one`() {
+        jdbc.update("""update ums_profile_bindings set lifecycle = 'ERASED', readiness = 'PROFILE_REQUIRED',
+            profile_reference = null, generation = null, profile_revision = null,
+            binding_revision = binding_revision + 1 where subject_reference = ?""", subject)
+        jdbc.update("""insert into ums_profile_erasure_obligations
+            (fence_reference, issuer_environment_ref, app_reference, subject_reference, obligation_kind,
+             retired_profile_reference, retired_generation, obligation_at, erased_binding_revision, erased_at,
+             content_obligation)
+            values (?, ?, ?, ?, 'APP_DELETION', ?, 1, now(), ?, now(), true)""",
+            UUID.randomUUID(), issuer, app, subject, UUID.randomUUID(), revision())
+
+        AssociationReports(jdbc, mapper, "test", clock).emit(
+            BindingState(scope, revision().toString(), "1", Lifecycle.ERASED, Readiness.PROFILE_REQUIRED,
+                null, null, null), "ERASED", UUID.randomUUID(), "association")
+
+        assertThat(reports().last()["payload"]["contentObligation"].asBoolean()).isTrue()
     }
 
     @Test fun `a display-only edit stays silent after the published rows are swept`() {

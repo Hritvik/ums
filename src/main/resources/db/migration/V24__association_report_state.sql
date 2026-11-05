@@ -12,3 +12,11 @@ create table ums_profile_association_state (
 
 alter table ums_profile_erasure_obligations
     add column content_obligation boolean not null default false;
+
+-- Existing profiles are treated as already reported at their current state, so a display-only
+-- edit after deployment does not look like a readiness change.
+insert into ums_profile_association_state
+    (issuer_environment_ref, app_reference, subject_reference, readiness, lifecycle)
+select issuer_environment_ref, app_reference, subject_reference, readiness, lifecycle
+from ums_profile_bindings
+on conflict (issuer_environment_ref, app_reference, subject_reference) do nothing;
