@@ -61,8 +61,10 @@ class ProfileExpiryService(
         val now = clock.instant().truncatedTo(ChronoUnit.MICROS)
         if (now.isBefore(retainUntil)) return@execute ExpiryResult(ExpiryOutcome.NOT_DUE, current)
 
-        // The sibling finalizer refuses to erase while a provider asset may still exist.
-        if (!contentAuthorized(fact.scope)) return@execute ExpiryResult(ExpiryOutcome.CONTENT_BLOCKED, current)
+        // The association is dropped and its reference is kept as a provider cleanup debt.
+        val contentReference = jdbc.queryForObject("""select avatar_reference from ums_profile_bindings
+            where issuer_environment_ref = ? and app_reference = ? and subject_reference = ?""", String::class.java,
+            fact.scope.issuerEnvironmentRef, fact.scope.appReference, fact.scope.subjectReference)
 
         val revision = Math.addExact(current.bindingRevision.toLong(), 1)
         if (!persistence.expireErased(fact.scope, revision, current.bindingRevision.toLong())) {
@@ -85,7 +87,7 @@ class ProfileExpiryService(
             where issuer_environment_ref = ? and app_reference = ? and subject_reference = ? and status = 'PENDING'""",
             fact.scope.issuerEnvironmentRef, fact.scope.appReference, fact.scope.subjectReference)
         persistence.recordErasedObligation(fact.scope, "CLOSURE_EXPIRY", null, profileReference,
-            generation.toLong(), recorded.closedAt, superseded, revision, now)
+            generation.toLong(), recorded.closedAt, superseded, revision, now, contentReference)
         invalidateExportsFor(jdbc, fact.scope, now)
         suppressNotices(jdbc, mapper, environment, fact.scope, fact.correlationId, now)
         persistence.recordEvidence(fact.scope, "EXPIRED", revision, now, null, now, fact.eventId, fact.correlationId)

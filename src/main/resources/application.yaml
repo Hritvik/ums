@@ -29,6 +29,13 @@ management:
     health:
       show-details: never
 ums:
+  content:
+    # authority-uri enables avatar attachment and cleanup; without it attachment stays rejected.
+    # authority-uri: https://content.example.test
+    # token: ...
+    timeout-seconds: ${UMS_CONTENT_TIMEOUT_SECONDS:5}
+    cleanup:
+      max-attempts: ${UMS_CONTENT_CLEANUP_MAX_ATTEMPTS:8}
   rate-limit:
     reads-per-minute: ${UMS_RATE_LIMIT_READS_PER_MINUTE:60}
     writes-per-minute: ${UMS_RATE_LIMIT_WRITES_PER_MINUTE:20}

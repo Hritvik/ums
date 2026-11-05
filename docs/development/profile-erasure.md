@@ -34,10 +34,15 @@ command receipts cannot restore erased fields.
 
 ## Content and completion limits
 
-The current runtime does not support accepted avatar attachment. An unexpected
-non-null avatar association blocks finalization without mutation, pending an
-accepted content cleanup integration; this worker cannot silently claim that a
-content owner's data was deleted.
+Avatar attachment follows the accepted content contract and stays disabled until a
+deployment configures `ums.content.authority-uri`. An app-only deletion that drops an
+avatar association still erases every local field: the reference is kept in the erasure
+fence as a provider cleanup debt (`content_state = PENDING`) and retried until the
+content owner confirms cleanup. The local erasure never claims the image was deleted.
+An IAM-global authoritative final is different: while an association exists it stays
+blocked with `GLOBAL_FINAL_BLOCKED` evidence and writes its cleanup fence. A
+redelivered final erases once the owner confirms cleanup, or once the retry budget is
+exhausted and the fence reads `FAILED`; the debt stays visible either way.
 
 LOCAL_COMPLETED describes this local UMS transaction. It does not mean published,
 delivered, acknowledged, or erased from a product, content service, backup, or
@@ -74,7 +79,7 @@ producer/input checks. JaCoCo reported 99.43% line and 86.98% branch coverage
 without exclusions. Contract checks include 59 UMS fixtures plus the pinned
 IAM artifact validation.
 
-Eight PostgreSQL finalization tests cover due boundaries, avatar blocking,
+Eight PostgreSQL finalization tests cover due boundaries, avatar cleanup debts,
 wrong scope/cancelled requests/replaced generations, atomic rollback after field
 clearing, concurrent retries and cancellation at the deadline, retained
 completion fences, old patch/privacy replay rejection, independent global

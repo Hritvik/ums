@@ -115,9 +115,24 @@ class ProfileGlobalDeletionService(
                 fact.sourceRevision <= persistence.globalSourceRevision(fact.scope)) {
                 return@execute GlobalDeletionResult(GlobalDeletionOutcome.STALE, current)
             }
-            if (!contentAuthorized(fact.scope)) {
-                // An authoritative final is never silently dropped: keep durable evidence of the
-                // blocked obligation until the content owner confirms cleanup.
+            // An authoritative global final is never silently dropped while a provider asset may
+            // still exist: it stays blocked until the content owner confirms cleanup (or the retry
+            // budget is exhausted), then a redelivery can erase locally with the debt visible.
+            val content = jdbc.query("""select b.avatar_reference, o.content_reference, o.content_state
+                from ums_profile_bindings b
+                left join ums_profile_erasure_obligations o
+                  on o.retired_profile_reference = b.profile_reference
+                where b.issuer_environment_ref = ? and b.app_reference = ? and b.subject_reference = ?""",
+                { rs, _ -> Triple(rs.getString(1), rs.getString(2), rs.getString(3)) },
+                fact.scope.issuerEnvironmentRef, fact.scope.appReference, fact.scope.subjectReference).single()
+            val association = content.first
+            // A debt recorded by an earlier blocked attempt survives an out-of-band clear.
+            val contentReference = association ?: content.second
+            val contentState = content.third
+            if (association != null && contentState != "CONFIRMED" && contentState != "FAILED") {
+                lifecycle.recordBlockedFinal(fact.scope, fact.eventId, current.profileReference!!,
+                    current.generation!!.toLong(), fact.occurredAt, current.bindingRevision.toLong(),
+                    clock.instant(), association)
                 lifecycle.recordEvidence(fact.scope, "GLOBAL_FINAL_BLOCKED", current.bindingRevision.toLong(),
                     fact.occurredAt, null, clock.instant(), fact.eventId, fact.correlationId)
                 return@execute GlobalDeletionResult(GlobalDeletionOutcome.CONTENT_BLOCKED, current)
@@ -136,7 +151,8 @@ class ProfileGlobalDeletionService(
             deleteAllCauses(fact.scope)
             markPendingRequestsSuperseded(fact.scope)
             lifecycle.recordErasedObligation(fact.scope, "IAM_GLOBAL", fact.eventId, current.profileReference!!,
-                current.generation!!.toLong(), fact.occurredAt, superseded, revision, clock.instant())
+                current.generation!!.toLong(), fact.occurredAt, superseded, revision, clock.instant(),
+                contentReference, contentState ?: if (contentReference != null) "PENDING" else "NONE")
             invalidateExportsFor(jdbc, fact.scope, clock.instant())
             suppressNotices(jdbc, mapper, environment, fact.scope, fact.correlationId, clock.instant())
             lifecycle.recordEvidence(fact.scope, "GLOBAL_ERASED", revision, fact.occurredAt, null,
@@ -156,11 +172,6 @@ class ProfileGlobalDeletionService(
 
     private fun requireApp(authority: TrustedProviderAuthority, scope: ProfileScope) =
         require(authority.app == scope.application()) { "Provider authority is outside the profile application" }
-
-    private fun contentAuthorized(scope: ProfileScope): Boolean =
-        jdbc.queryForObject("""select avatar_reference is null from ums_profile_bindings
-            where issuer_environment_ref = ? and app_reference = ? and subject_reference = ?""",
-            Boolean::class.java, scope.issuerEnvironmentRef, scope.appReference, scope.subjectReference) == true
 
     private fun deleteAllCauses(scope: ProfileScope) {
         jdbc.update("""delete from ums_profile_deletion_causes

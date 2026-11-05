@@ -15,6 +15,8 @@ gauge, or page.
 | `ums.alert.failed.retention` | failed deletes, or the sweep has not completed | any after a 2-hour startup grace |
 | `ums.alert.backup.failed` | failed, stale, or unconfigured backup | any |
 | `ums.alert.export.cleanup.failed` | the last cleanup failed or has never run | any after a 2-minute grace |
+| `ums.content.cleanup.pending` | erasure fences still owed an asset cleanup | trend only |
+| `ums.content.cleanup.failed` | cleanup attempts that exhausted the retry budget | any |
 | `ums.alert.authorization.new` | caller denials | 5 since the previous check |
 | `ums.alert.authorization.failures` | cumulative caller denials | trend only |
 | `ums.outbox.*`, `ums.retention.*`, `ums.backup.*` | delivery, sweep, backup state | see each doc |
@@ -26,7 +28,8 @@ gauge, or page.
    stuck: the holder renews `ums_worker_lease.leased_until` page by page, so a crashed worker's
    lease expires at most ten minutes after its last renewal.
 3. Read the maintenance-worker log: it prints finalized, blocked, and retryable counts. A
-   `BLOCKED` outcome is usually a content-authority obligation waiting for the content owner.
+   `BLOCKED` outcome is a local fence (not due, stale generation, cancelled, or superseded),
+   never an avatar cleanup debt: app-only deletion now erases locally and records the debt.
 4. There is no manual batch endpoint; the worker is the only entry point. If it is running and
    the count does not fall, capture the counts and escalate as a stuck finalization rather than
    editing lifecycle rows by hand.
@@ -84,12 +87,20 @@ gauge, or page.
 2. Watch `ums.alert.authorization.failures` for a burst; it counts denials only.
 3. Re-issue credentials and confirm no profile change came from the compromised identity.
 
-## Content revocation
+## Content revocation and cleanup
 
-1. A revoked asset invalidates the association and increments the profile revision; the neutral
-   avatar applies until a valid reference exists.
-2. Erasure with an outstanding provider obligation is blocked and reports the obligation; finish
-   cleanup, then re-run the finalizer.
+1. A revoked asset invalidates the association on the next validated read or content fact; the
+   neutral avatar applies until a valid reference exists. An unavailable owner keeps the
+   association.
+2. An erasure that dropped an avatar records a cleanup debt and erases local fields. It never
+   claims the image is gone. Watch `ums.content.cleanup.pending` and `ums.content.cleanup.failed`.
+3. A `FAILED` debt means the retry budget is spent: confirm the content authority is reachable
+   and the credential is valid, then reset `content_state` to `PENDING` and `content_attempts` to
+   `0` for that fence so the worker retries. Debts live in `ums_profile_erasure_obligations`
+   (erasures) and `ums_content_cleanup_requests` (explicit clears and replacements). Never edit
+   `avatar_reference` by hand.
+4. A blocked IAM-global final stays pending until the same cleanup confirms, or until its retry
+   budget is exhausted (`FAILED`); a redelivered final then erases and keeps the debt visible.
 
 ## Safe restore
 

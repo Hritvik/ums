@@ -42,7 +42,10 @@ records `GLOBAL_ERASED` lifecycle evidence, marks any pending app-only request
 `SUPERSEDED`, withdraws outstanding notices, and publishes the canonical erased
 fact. An avatar association blocks the finalization without mutation but records
 `GLOBAL_FINAL_BLOCKED` evidence, so an authoritative demand is never silently
-dropped; completing a blocked final is a content-cleanup obligation.
+dropped. The blocked final also writes the cleanup fence. The cleanup worker asks
+the content owner to clean the asset; once the owner confirms — or the retry budget
+is exhausted and the fence reads `FAILED` — a redelivered final erases locally and
+keeps the debt visible.
 
 ## Recorded verification
 

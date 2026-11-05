@@ -1,10 +1,10 @@
 # Work Items — UMS remaining implementation (Slices D–G)
 
-> **Coordination status (2026-11-01).** Status lines below mirror the central registry; the registry remains authoritative for execution state and leases. W-1–W-4 and W-10 are integrated, W-5 is implemented and awaiting review, and the remaining items are planned.
+> **Coordination status (2026-11-05).** Status lines below mirror the central registry; the registry remains authoritative for execution state and leases. W-1–W-17 are integrated or implemented; W-11 is implemented pending review, and W-18 plus the IAM-dependent items wait on the runnable IAM runtime.
 
 These work items continue the build sequence in the [implementation handoff](../ums-platform/issues/08-define-verification-and-implementation-handoff.md) after the already-verified Foundation and Slices A, B, and D1–D3. The scope boundary is recorded in [artifacts/scope-boundary.md](artifacts/scope-boundary.md). Work items are numbered `W-N` for cross-reference only. `Depends on` lines refer to other work items in this file.
 
-Five provider inputs do not exist yet and are carried as named gaps rather than invented: an IAM app-departure/global-deletion event contract (inherited by W-4 and W-6), a content-provider reference/cleanup contract (W-11), a notice-owner delivery contract (W-10 and W-15), a Dutch-owned Member-association contract (W-8), and named operators/consumer owners (W-14, W-15, W-18). Until an owner accepts one, the affected work item may build and verify the local behavior but cannot claim the integration.
+Provider inputs that did not exist when these items were written are carried as named gaps rather than invented. The content-owner attachment contract (W-11) and the Dutch association contract (W-8) are now accepted; an IAM app-departure/global-deletion event contract (inherited by W-4 and W-6), a notice-owner delivery contract (W-10 and W-15), and named operators/consumer owners (W-14, W-15, W-18) remain open. Until an owner accepts one, the affected work item may build and verify the local behavior but cannot claim the integration. Content fixtures both sides validate are still outstanding, so avatars stay disabled by default.
 
 ## Shared reference artifacts
 
@@ -92,7 +92,7 @@ Five provider inputs do not exist yet and are carried as named gaps rather than 
 - Reuse the existing erasure field-clearing and canonical erased event rather than writing a second erasure path, and record the obligation on the shared erasure fence.
   - Every obligation writes one fence row with the obligation kind, optional cause reference, retired generation, obligation time, erased revision, and the causes it superseded, so recovery reconciles one surface.
 - Resolve competing obligations by earliest irreversible deadline: an earlier pending deletion wins, a later one cannot extend retention, and closure expiry never starts a fresh grace period.
-- Refuse erasure while an avatar association exists, matching the deletion finalizer instead of dropping the only pointer to a provider asset.
+- Record an attached avatar reference as a provider cleanup debt when erasing, so the only pointer to the asset is not lost while local erasure still completes.
 - Mark a superseded app-only request terminal so it is never selected for processing again and never claims completion or cancellation.
 - Treat a profile reactivated between selection and execution as not due, and report that as a routine skip rather than a failure.
 - Report per-item outcomes with the same blocked, retryable, and corruption distinction already used by due-deletion batches.
@@ -108,7 +108,7 @@ Five provider inputs do not exist yet and are carried as named gaps rather than 
 - [ ] A profile past its retention deadline is erased with the same tombstone shape and canonical erased event as an app-only deletion, plus one erasure fence row carrying the obligation kind, retired generation, obligation time, erased revision, and superseded causes, all in one transaction.
 - [ ] A profile before the deadline, or one reactivated after selection, is left untouched and reported as skipped.
 - [ ] When several obligations exist, the earliest irrevocable deadline governs, no later cause extends it, and a superseded request reads as terminal `SUPERSEDED` with cancellation ineligible.
-- [ ] An avatar association blocks expiry without mutating the profile, and a reactivation racing the deadline cannot both reopen and erase.
+- [ ] An avatar association becomes a recorded cleanup debt at expiry, and a reactivation racing the deadline cannot both reopen and erase.
 - [ ] Restoring a closed profile's fields is impossible afterwards: old edit receipts, onboarding retries, and status reads cannot surface the erased values.
 - [ ] Automated tests cover due, not-due, reactivated-after-selection, competing-deadline, and replay paths.
 
@@ -334,9 +334,10 @@ Five provider inputs do not exist yet and are carried as named gaps rather than 
 
 **Summary.** An avatar is currently just a stored reference, because no content provider has agreed how attachments are created, revoked, or cleaned up. Until that exists, a person cannot attach one and erasure cannot honestly claim the image is gone. This item closes that gap with the content owner.
 
-**Status.** Ready — the attachment contract is accepted in
-[content-attachment-v1.md](../contracts/proposed/content-attachment-v1.md) (2026-11-05); avatar
-attachment stays disabled until the fixtures exist and both sides validate them.
+**Status.** Implemented — the attachment contract is accepted in
+[content-attachment-v1.md](../contracts/proposed/content-attachment-v1.md) (2026-11-05).
+Attachment stays disabled unless a deployment configures a content authority, and remains
+gated on the contract fixtures both sides still have to validate.
 
 **Work to be done.**
 - Agree with the content owner on reference format, attach and revoke semantics, ownership verification, cleanup confirmation, and what UMS may claim.
@@ -354,11 +355,11 @@ attachment stays disabled until the fixtures exist and both sides validate them.
 - **Repo doc** — [profile-editing.md](profile-editing.md) for the current rejection behavior being replaced.
 
 **Acceptance criteria.**
-- [ ] A versioned content contract exists covering reference format, attach, revoke, ownership check, and cleanup confirmation, with fixtures both sides validate.
-- [ ] A permitted attachment is stored only after the reference passes the contract's validation, and an explicit clear removes the association.
-- [ ] Erasure with an outstanding provider obligation reports the obligation instead of claiming the content was deleted, while local fields are still erased.
-- [ ] Cleanup failures are retryable and visible, and a reference owned by another scope is never revoked.
-- [ ] Automated tests cover attachment validation, clearing, erasure with and without an outstanding obligation, and the retry path.
+- [x] A versioned content contract exists covering reference format, attach, revoke, ownership check, and cleanup confirmation. Fixtures both sides validate remain outstanding.
+- [x] A permitted attachment is stored only after the reference passes the contract's validation, and an explicit clear removes the association.
+- [x] Erasure with an outstanding provider obligation reports the obligation instead of claiming the content was deleted, while local fields are still erased.
+- [x] Cleanup failures are retryable and visible, and a reference owned by another scope is never revoked.
+- [x] Automated tests cover attachment validation, clearing, erasure with and without an outstanding obligation, the retry path, and release of a blocked global final.
 
 **Depends on.** `W-3, W-7.`
 

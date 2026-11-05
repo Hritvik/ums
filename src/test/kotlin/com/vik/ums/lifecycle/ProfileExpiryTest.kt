@@ -197,17 +197,19 @@ class ProfileExpiryTest {
         assertThat(eventCount()).isEqualTo(events)
     }
 
-    @Test fun `an avatar association blocks expiry instead of dropping the pointer`() {
+    @Test fun `an avatar association becomes a cleanup debt at expiry`() {
         close()
-        jdbc.update("update ums_profile_bindings set avatar_reference = 'opaque-avatar-reference'")
+        jdbc.update("update ums_profile_bindings set avatar_reference = 'asset_opaque-avatar-123456'")
         clock.advance(Duration.ofDays(90))
 
-        assertThat(expiry.expire(expiryFact()).outcome).isEqualTo(ExpiryOutcome.CONTENT_BLOCKED)
+        assertThat(expiry.expire(expiryFact()).outcome).isEqualTo(ExpiryOutcome.EXPIRED)
         assertThat(jdbc.queryForObject("select lifecycle from ums_profile_bindings", String::class.java))
-            .isEqualTo("CLOSED")
+            .isEqualTo("ERASED")
         assertThat(jdbc.queryForObject("select avatar_reference from ums_profile_bindings", String::class.java))
-            .isEqualTo("opaque-avatar-reference")
-        assertThat(jdbc.queryForObject("select count(*) from ums_profile_erasure_obligations", Int::class.java)).isZero()
+            .isNull()
+        assertThat(jdbc.queryForObject("""select content_state || ':' || content_reference from
+            ums_profile_erasure_obligations""", String::class.java))
+            .isEqualTo("PENDING:asset_opaque-avatar-123456")
     }
 
     @Test fun `a superseded request reports terminal status without claiming completion`() {

@@ -56,7 +56,7 @@ class DueDeletionBatchTest {
         jdbc.execute("drop function if exists batch_test_failure()")
     }
 
-    @Test fun `bounded cursor advances past blocked head without starving due work`() {
+    @Test fun `bounded cursor advances through due work`() {
         val first = accept()
         clock.advance(Duration.ofSeconds(1))
         val second = accept()
@@ -65,7 +65,7 @@ class DueDeletionBatchTest {
         val page1 = batch.run(maintenance(), 1, null, "batch")
         assertThat(page1.results).hasSize(1)
         assertThat(page1.results.single().requestReference).isEqualTo(first.second)
-        assertThat(page1.results.single().outcome.name).isEqualTo("BLOCKED")
+        assertThat(page1.results.single().outcome.name).isEqualTo("LOCAL_COMPLETED")
         assertThat(page1.nextCursor).isNotNull()
         val page2 = batch.run(maintenance(), 1, page1.nextCursor, "batch")
         assertThat(page2.cutoff).isEqualTo(page1.cutoff)

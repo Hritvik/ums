@@ -13,9 +13,9 @@ row locks; the finalizer reacquires the existing application lock and rechecks
 current authority, generation, cause, and deadline before each mutation.
 
 A continuation cursor binds the app, fixed cutoff, and last attempted key. It
-advances past blocked and retryable items as well as successful items, so an
-unsupported avatar at the start of a page cannot prevent later due requests
-from being attempted. A cursor is continuation metadata, not authority or a
+advances past blocked and retryable items as well as successful items, so a
+transient failure at the start of a page cannot prevent later due requests from
+being attempted. A cursor is continuation metadata, not authority or a
 snapshot of the database. Late changes may require a fresh pass.
 
 Each finalization uses its own transaction. An ambient caller transaction is

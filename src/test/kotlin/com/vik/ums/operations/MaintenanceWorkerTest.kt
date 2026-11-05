@@ -282,16 +282,18 @@ class MaintenanceWorkerTest {
             Int::class.java)).isEqualTo(2)
     }
 
-    @Test fun `a content-blocked app is reported blocked without stopping the pass`() {
+    @Test fun `an avatar becomes a cleanup debt without stopping the pass`() {
         requestDeletion()
         clock.advance(Duration.ofDays(30))
-        jdbc.update("update ums_profile_bindings set avatar_reference = 'asset'")
+        jdbc.update("update ums_profile_bindings set avatar_reference = 'asset_seeded-0123456789'")
 
         val result = worker.run()
 
-        assertThat(result.blocked).isEqualTo(1)
+        assertThat(result.finalized).isEqualTo(1)
         assertThat(result.skipped).isFalse()
-        assertThat(lifecycle()).isEqualTo("DELETION_PENDING")
+        assertThat(lifecycle()).isEqualTo("ERASED")
+        assertThat(jdbc.queryForObject("select content_state from ums_profile_erasure_obligations",
+            String::class.java)).isEqualTo("PENDING")
     }
 
     private class AdjustableClock(@Volatile private var now: Instant) : Clock() {

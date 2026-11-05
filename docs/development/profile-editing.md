@@ -15,8 +15,13 @@ already resolved local permissions; they are not tokens or proof of IAM authorit
 - Locale and display timezone must match injected, versioned supported catalogs.
   The catalogs must match the registered profile policy. These fields do not
   change product-owned financial or scheduling rules.
-- Non-null avatar attachment is rejected until content authority is accepted.
-  Explicit clearing is supported, subject to the same field permissions.
+- Non-null avatar attachment requires the accepted content contract: the reference
+  must match `^asset_[A-Za-z0-9_-]{16,240}$` and pass the owner's ownership check
+  outside the profile transaction. A deployment with no content authority
+  configured rejects attachments. Explicit clearing is supported, subject to the
+  same field permissions; clearing or replacing an avatar commits a durable cleanup
+  request for the previous reference, which the content worker confirms with the
+  owner.
 - Actual field changes increment profile and binding revisions once, recompute
   readiness from explicit stored values, and publish one minimized canonical
   FIELDS_CHANGED event. No-op patches record their receipt without a revision

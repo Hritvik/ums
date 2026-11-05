@@ -5,6 +5,11 @@ import com.fasterxml.jackson.core.StreamReadFeature
 import com.fasterxml.jackson.databind.DeserializationFeature
 import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.ObjectMapper
+import com.vik.ums.content.ContentAuthority
+import com.vik.ums.content.ContentReference
+import com.vik.ums.content.ContentVerdict
+import com.vik.ums.content.TrustedContentAttachment
+import com.vik.ums.content.UnconfiguredContentAuthority
 import com.vik.ums.foundation.CallerAuthorityInterceptor
 import com.vik.ums.foundation.SafeErrors
 import com.vik.ums.foundation.StrictIds
@@ -23,6 +28,7 @@ class ProfilePatchController(
     private val provisioning: ProfileProvisioningService,
     private val scopes: ProfileScopeResolver,
     private val mapper: ObjectMapper,
+    private val content: ContentAuthority = UnconfiguredContentAuthority(),
 ) {
     private val strict = ObjectMapper(JsonFactory.builder()
         .enable(StreamReadFeature.STRICT_DUPLICATE_DETECTION)
@@ -62,8 +68,33 @@ class ProfilePatchController(
         // The same authority reads back the display it just wrote.
         val authority = TrustedHumanAuthority(scope, CallerActorReferences.of(caller),
             setOf(HumanAction.EDIT, HumanAction.READ))
+        // The ownership check runs before the profile transaction; the profile row is not locked
+        // while the content owner is contacted.
+        val attachment = try {
+            when (val reference = command.changes[ProfileField.AVATAR_REFERENCE]) {
+                null -> null
+                else -> {
+                    if (!ContentReference.PATTERN.matches(reference)) {
+                        return failure(response, 422, "invalid_field", "A supplied field value is not allowed", correlation)
+                    }
+                    when (content.check(reference, scope)) {
+                        ContentVerdict.VALID ->
+                            TrustedContentAttachment(reference, scope)
+                        ContentVerdict.UNAVAILABLE -> {
+                            response.setHeader("Retry-After", "5")
+                            return failure(response, 503, "unavailable", "Content authority is unavailable", correlation)
+                        }
+                        else -> return failure(response, 422, "invalid_field",
+                            "A supplied field value is not allowed", correlation)
+                    }
+                }
+            }
+        } catch (unavailable: Exception) {
+            response.setHeader("Retry-After", "5")
+            return failure(response, 503, "unavailable", "Content authority is unavailable", correlation)
+        }
         try {
-            editing.patch(authority, command)
+            editing.patch(authority, command, attachment)
         } catch (conflict: ProfileIdempotencyConflictException) {
             return failure(response, 409, "idempotency_key_reused", "The idempotency key was reused", correlation)
         } catch (conflict: ProfileVersionConflictException) {

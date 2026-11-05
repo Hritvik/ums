@@ -1,6 +1,8 @@
 package com.vik.ums.profiles
 
 import com.fasterxml.jackson.databind.ObjectMapper
+import com.vik.ums.content.ContentCleanupRequests
+import com.vik.ums.content.TrustedContentAttachment
 import org.springframework.jdbc.core.JdbcTemplate
 import org.springframework.transaction.support.TransactionTemplate
 import java.time.Clock
@@ -14,28 +16,37 @@ class ProfileEditingService(
     environment: String,
     private val catalogs: ProfileCatalogs,
     private val fingerprints: HmacPatchFingerprint,
-    clock: Clock = Clock.systemUTC(),
+    private val clock: Clock = Clock.systemUTC(),
 ) {
     private val bindings = ProfilePersistence(jdbc)
     private val fields = ProfileFieldsPersistence(jdbc)
     private val validation = ProfileFieldValidation(catalogs)
     private val events = ProfileStateEvents(jdbc, mapper, environment, clock)
+    private val cleanup = ContentCleanupRequests(jdbc, clock)
 
-    fun patch(authority: TrustedHumanAuthority, command: ProfilePatchCommand): PatchOutcome = transactions.execute {
+    fun patch(authority: TrustedHumanAuthority, command: ProfilePatchCommand,
+              attachment: TrustedContentAttachment? = null): PatchOutcome = transactions.execute {
         require(HumanAction.EDIT in authority.actions) { "Profile edit authority is required" }
+        require(attachment == null || attachment.scope == authority.scope) { "Attachment is outside this profile" }
         val policy = authorizedPolicy(authority.scope.application())
         require(command.changes.keys.all { it in policy.humanEditableFields }) { "Profile field is not editable" }
         val before = active(authority.scope)
-        val changes = validation.normalize(command.changes)
+        val changes = validation.normalize(command.changes, attachment)
         val fingerprint = fingerprint(command)
         val receipt = fields.receipt(authority, command, fingerprint)
         if (receipt != null) return@execute receipt
         if (before.profileRevision!!.toLong() != command.expectedVersion) throw ProfileVersionConflictException()
         val oldFields = fields.fields(authority.scope)
         val newFields = (oldFields + changes).filterValues { it != null }.mapValues { it.value!! }
+        val previousAvatar = oldFields[ProfileField.AVATAR_REFERENCE]
         val after = if (newFields == oldFields) before else {
             val readiness = if (policy.requiredFields.all { it in newFields }) Readiness.PROFILE_READY else Readiness.PROFILE_REQUIRED
             fields.update(authority.scope, newFields, readiness)
+            // Clearing or replacing an association leaves the old asset unreferenced; the debt is
+            // committed with the edit and confirmed asynchronously by the content owner.
+            if (previousAvatar != null && previousAvatar != newFields[ProfileField.AVATAR_REFERENCE]) {
+                cleanup.record(authority.scope, previousAvatar)
+            }
             active(authority.scope).also { events.emit(it, "FIELDS_CHANGED", command.idempotencyKey, command.correlationId) }
         }
         val outcome = PatchOutcome(after.profileReference!!, after.profileRevision!!)

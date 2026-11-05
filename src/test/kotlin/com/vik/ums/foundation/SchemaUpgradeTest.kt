@@ -21,7 +21,7 @@ import java.util.UUID
 @Testcontainers
 class SchemaUpgradeTest {
     companion object {
-        const val LATEST = "24"
+        const val LATEST = "25"
         @Container @JvmStatic val postgres = PostgreSQLContainer("postgres:17.6-alpine")
     }
 

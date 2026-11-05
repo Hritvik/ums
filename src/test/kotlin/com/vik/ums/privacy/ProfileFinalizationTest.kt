@@ -90,16 +90,22 @@ class ProfileFinalizationTest {
             .isEqualTo(ProvisioningOutcome.RESTRICTED)
     }
 
-    @Test fun `due boundary is exact and unsupported avatar blocks without cleanup claims`() {
+    @Test fun `due boundary is exact and an avatar becomes a provider cleanup debt`() {
         val accepted = request()
         clock.advance(Duration.ofDays(30).minusNanos(1))
         assertThatThrownBy { finish(accepted.operationReference) }.isInstanceOf(IllegalStateException::class.java)
         clock.advance(Duration.ofNanos(1))
-        jdbc.update("update ums_profile_bindings set avatar_reference='seeded-provider-asset'")
-        assertThatThrownBy { finish(accepted.operationReference) }.isInstanceOf(IllegalStateException::class.java)
-        assertThat(jdbc.queryForObject("select status from ums_profile_deletion_requests", String::class.java)).isEqualTo("PENDING")
-        assertThat(jdbc.queryForObject("select count(*) from ums_profile_erasure_obligations", Long::class.java)).isZero()
-        assertThat(jdbc.queryForObject("select avatar_reference from ums_profile_bindings", String::class.java)).isEqualTo("seeded-provider-asset")
+        jdbc.update("update ums_profile_bindings set avatar_reference='asset_seeded-0123456789-provider-1234'")
+
+        finish(accepted.operationReference)
+
+        assertThat(jdbc.queryForObject("select status from ums_profile_deletion_requests", String::class.java))
+            .isEqualTo("LOCAL_COMPLETED")
+        assertThat(jdbc.queryForObject("""select content_state || ':' || content_reference from
+            ums_profile_erasure_obligations""", String::class.java))
+            .isEqualTo("PENDING:asset_seeded-0123456789-provider-1234")
+        assertThat(jdbc.queryForObject("select avatar_reference from ums_profile_bindings", String::class.java))
+            .isNull()
     }
 
     @Test fun `wrong scope cancelled requests and replacement generations cannot finalize`() {

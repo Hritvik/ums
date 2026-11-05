@@ -267,8 +267,8 @@ class GlobalDeletionTest {
         assertThat(provisioning.status(app, scope).retentionDeadline).isNull()
     }
 
-    @Test fun `a blocked final is idempotent under redelivery`() {
-        jdbc.update("update ums_profile_bindings set avatar_reference = 'opaque-avatar-reference'")
+    @Test fun `a final with an avatar stays blocked and is idempotent`() {
+        jdbc.update("update ums_profile_bindings set avatar_reference = 'asset_opaque-avatar-123456'")
         val fact = GlobalFinalFact(scope, 1, clock.instant(), UUID.randomUUID(), "global")
 
         assertThat(global.finalize(provider, fact).outcome).isEqualTo(GlobalDeletionOutcome.CONTENT_BLOCKED)
@@ -276,6 +276,17 @@ class GlobalDeletionTest {
 
         assertThat(jdbc.queryForObject("""select count(*) from ums_profile_lifecycle_evidence
             where action = 'GLOBAL_FINAL_BLOCKED'""", Int::class.java)).isEqualTo(1)
+        assertThat(jdbc.queryForObject("""select obligation_kind || ':' || content_state from
+            ums_profile_erasure_obligations""", String::class.java)).isEqualTo("IAM_GLOBAL_BLOCKED:PENDING")
+        assertThat(jdbc.queryForObject("select avatar_reference from ums_profile_bindings", String::class.java))
+            .isEqualTo("asset_opaque-avatar-123456")
+
+        // A confirmed cleanup leaves the association for the erasure to drop, and a redelivered
+        // final can now complete.
+        jdbc.update("update ums_profile_erasure_obligations set content_state = 'CONFIRMED'")
+        assertThat(global.finalize(provider, fact).outcome).isEqualTo(GlobalDeletionOutcome.APPLIED)
+        assertThat(jdbc.queryForObject("""select obligation_kind || ':' || content_state from
+            ums_profile_erasure_obligations""", String::class.java)).isEqualTo("IAM_GLOBAL:CONFIRMED")
     }
 
     @Test fun `stale and replayed revisions change nothing`() {
@@ -311,12 +322,12 @@ class GlobalDeletionTest {
             ["superseded_causes"].toString()).contains("IAM_GLOBAL")
     }
 
-    @Test fun `absent, erased, and content-blocked finalizations are refused`() {
+    @Test fun `absent and already erased finalizations are refused`() {
         val absent = ProfileScope(app.issuerEnvironmentRef, app.appReference, UUID.randomUUID())
         assertThat(global.finalize(provider, GlobalFinalFact(absent, 1, clock.instant(), UUID.randomUUID(), "global")).outcome)
             .isEqualTo(GlobalDeletionOutcome.UNAVAILABLE)
 
-        jdbc.update("update ums_profile_bindings set avatar_reference = 'opaque-avatar-reference'")
+        jdbc.update("update ums_profile_bindings set avatar_reference = 'asset_opaque-avatar-123456'")
         assertThat(final(1).outcome).isEqualTo(GlobalDeletionOutcome.CONTENT_BLOCKED)
         assertThat(jdbc.queryForList("select action from ums_profile_lifecycle_evidence", String::class.java))
             .contains("GLOBAL_FINAL_BLOCKED")

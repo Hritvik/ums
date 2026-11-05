@@ -64,6 +64,9 @@ class RestoreDrillTest {
         val backupTakenBefore = Instant.now()
         dump("ums_drill_backup.sql")
         val backupTakenAt = Instant.now()
+        // The service that performs the erasure runs the current schema; only the restored copy
+        // is still at the backup's version and has to be forward upgraded.
+        Flyway.configure().dataSource(source).load().migrate()
 
         val deletion = ProfileDeletionService(jdbc, transactions, mapper, "test", clock, Duration.ofMinutes(5))
         val accepted = deletion.request(TrustedPrivacyAuthority(scope, UUID.randomUUID(),
@@ -90,8 +93,8 @@ class RestoreDrillTest {
         val restoredFlyway = Flyway.configure().dataSource(restored).load()
         assertThat(restoredFlyway.info().current()?.version?.version).isEqualTo("22")
         val upgrade = restoredFlyway.migrate()
-        assertThat(upgrade.migrationsExecuted).isEqualTo(2)
-        assertThat(restoredFlyway.info().current()?.version?.version).isEqualTo("24")
+        assertThat(upgrade.migrationsExecuted).isEqualTo(3)
+        assertThat(restoredFlyway.info().current()?.version?.version).isEqualTo("25")
 
         // The restored copy carries the pre-deletion row and no journal feed: the evidence must
         // come from outside the backup.
@@ -135,7 +138,7 @@ class RestoreDrillTest {
             mapper.writeValueAsString(record))
 
         assertThat(fencesAfter).isEqualTo(fencesBefore + 1)
-        assertThat(migration).isEqualTo("24")
+        assertThat(migration).isEqualTo("25")
         assertThat(checkpoints).isEqualTo(1)
         assertThat(backupAge).isLessThan(Duration.ofMinutes(5))
         assertThat(elapsed).isLessThan(Duration.ofMinutes(2))

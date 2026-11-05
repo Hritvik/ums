@@ -23,8 +23,11 @@ recorded as a control by construction or as a residual gap.
 | Forged delegation | no delegation or workload profile is accepted (`IamCallerResolverTest` rejects a workload token) | fail-closed by absence; no delegation token can be presented |
 | Cross-app listing | no listing surface is implemented | **not present**; the internal routes remain gated |
 
-Deferred behind W-11: the cross-scope avatar-reference attack. Avatar attachment is disabled, so
-the surface does not exist yet.
+The cross-scope avatar-reference attack is mitigated by W-11: the ownership check returns
+`OWNER_MISMATCH` unless the reference's `appRegistrationId` and `appSubject` both equal the
+caller's mapping, and a mismatch rejects the attach without revoking the other scope's asset.
+Avatar attachment stays disabled unless a deployment configures the content authority, so the
+default runtime still exposes no such surface.
 
 ## Rate limits
 
@@ -85,5 +88,5 @@ shared store, which this best-effort tier does not claim.
   Jackson 3 and add `tools.jackson.module:jackson-module-kotlin`.
 - R-1 is closed: the Spring Framework 7 / Boot 4 upgrade shipped, and the migration record is
   [spring-7-upgrade.md](../operations/spring-7-upgrade.md).
-- The avatar cross-scope attack is deferred behind W-11.
+- The avatar cross-scope attack is covered by W-11; its remaining exposure is the pending provider fixture validation.
 - External scanner databases are fetched at CI time; offline builds skip them by design.

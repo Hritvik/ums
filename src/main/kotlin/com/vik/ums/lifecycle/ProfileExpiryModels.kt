@@ -26,9 +26,6 @@ enum class ExpiryOutcome {
     /** The profile is absent, already erased, or restricted by another obligation. */
     SKIPPED,
 
-    /** An avatar association still exists; the content owner has not confirmed cleanup. */
-    CONTENT_BLOCKED,
-
     /** No profile exists for this scope. */
     UNAVAILABLE,
 }

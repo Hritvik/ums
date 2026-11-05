@@ -48,10 +48,11 @@ class ProfileFinalizationService(
             check(cause?.requestReference == reference && Instant.parse(cause.deadline) == request.deadline &&
                 Instant.parse(cause.acceptedAt) == request.acceptedAt && cause.sourceRevision == request.revision) { "App-only cause does not match request" }
             requireFinalization(!now.isBefore(request.deadline), FinalizationBlockReason.NOT_DUE)
-            requireFinalization(jdbc.queryForObject("""select avatar_reference is null from ums_profile_bindings
-                where issuer_environment_ref = ? and app_reference = ? and subject_reference = ?""", Boolean::class.java,
-                scope.issuerEnvironmentRef, scope.appReference, scope.subjectReference) == true, FinalizationBlockReason.CONTENT_AUTHORITY_UNAVAILABLE)
-            erase(scope, request, before)
+            // The association is dropped and its reference is kept as a provider cleanup debt.
+            val contentReference = jdbc.queryForObject("""select avatar_reference from ums_profile_bindings
+                where issuer_environment_ref = ? and app_reference = ? and subject_reference = ?""", String::class.java,
+                scope.issuerEnvironmentRef, scope.appReference, scope.subjectReference)
+            erase(scope, request, before, contentReference)
             erasureJournal.record(scope, before.profileReference!!, before.generation!!.toLong(),
                 Math.addExact(before.bindingRevision.toLong(), 1), now, "APP_DELETION", reference)
             invalidateExportsFor(jdbc, scope, now)
@@ -63,7 +64,8 @@ class ProfileFinalizationService(
         }!!
     }
 
-    private fun erase(scope: ProfileScope, request: StoredDeletionRequest, before: BindingState) {
+    private fun erase(scope: ProfileScope, request: StoredDeletionRequest, before: BindingState,
+                      contentReference: String?) {
         val revision = Math.addExact(before.bindingRevision.toLong(), 1)
         val superseded = mapper.writeValueAsString(listOfNotNull(
             before.deletionCauses.iamGlobal?.let {
@@ -72,11 +74,12 @@ class ProfileFinalizationService(
         jdbc.update("""insert into ums_profile_erasure_obligations
             (fence_reference, issuer_environment_ref, app_reference, subject_reference, obligation_kind,
              cause_reference, retired_profile_reference, retired_generation, obligation_at, superseded_causes,
-             erased_binding_revision, erased_at)
-            values (?, ?, ?, ?, 'APP_DELETION', ?, ?, ?, ?, ?::jsonb, ?, ?)""",
+             erased_binding_revision, erased_at, content_obligation, content_state, content_reference)
+            values (?, ?, ?, ?, 'APP_DELETION', ?, ?, ?, ?, ?::jsonb, ?, ?, ?, ?, ?)""",
             UUID.randomUUID(), scope.issuerEnvironmentRef, scope.appReference, scope.subjectReference,
             request.reference, request.profileReference, request.generation.toLong(), Timestamp.from(request.acceptedAt),
-            superseded, revision, Timestamp.from(clock.instant()))
+            superseded, revision, Timestamp.from(clock.instant()),
+            contentReference != null, if (contentReference != null) "PENDING" else "NONE", contentReference)
         jdbc.update("""delete from ums_profile_deletion_causes where issuer_environment_ref = ? and app_reference = ? and subject_reference = ?""",
             scope.issuerEnvironmentRef, scope.appReference, scope.subjectReference)
         jdbc.update("""update ums_profile_bindings set lifecycle='ERASED', readiness='PROFILE_REQUIRED', profile_reference=null,

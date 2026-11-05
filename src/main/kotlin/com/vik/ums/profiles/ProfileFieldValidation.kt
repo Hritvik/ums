@@ -1,5 +1,7 @@
 package com.vik.ums.profiles
 
+import com.vik.ums.content.ContentReference
+import com.vik.ums.content.TrustedContentAttachment
 import java.text.Normalizer
 import javax.crypto.Mac
 import javax.crypto.spec.SecretKeySpec
@@ -18,11 +20,18 @@ class HmacPatchFingerprint(key: ByteArray) {
 }
 
 internal class ProfileFieldValidation(private val catalogs: ProfileCatalogs) {
-    fun normalize(changes: Map<ProfileField, String?>): Map<ProfileField, String?> = changes.mapValues { (field, value) ->
+    fun normalize(changes: Map<ProfileField, String?>,
+                  attachment: TrustedContentAttachment? = null): Map<ProfileField, String?> = changes.mapValues { (field, value) ->
         when {
             value == null -> null
             field == ProfileField.DISPLAY_NAME -> name(value)
-            field == ProfileField.AVATAR_REFERENCE -> throw IllegalArgumentException("Avatar attachment requires accepted content authority")
+            field == ProfileField.AVATAR_REFERENCE -> {
+                require(ContentReference.PATTERN.matches(value)) { "Avatar reference is malformed" }
+                require(attachment?.reference == value) {
+                    "Avatar attachment requires accepted content authority"
+                }
+                value
+            }
             field == ProfileField.DISPLAY_LOCALE -> {
                 require(value.length <= 64 && value.matches(Regex("[A-Za-z]{2,8}(-[A-Za-z0-9]{1,8})*")) && value in catalogs.locales)
                 value

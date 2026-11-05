@@ -72,16 +72,49 @@ internal class LifecyclePersistence(private val jdbc: JdbcTemplate) {
     fun recordErasedObligation(
         scope: ProfileScope, obligationKind: String, causeReference: UUID?, retiredProfileReference: UUID,
         retiredGeneration: Long, obligationAt: Instant, supersededCauses: String,
-        erasedRevision: Long, erasedAt: Instant,
+        erasedRevision: Long, erasedAt: Instant, contentReference: String? = null,
+        contentState: String = if (contentReference != null) "PENDING" else "NONE",
+    ) {
+        // A global final that was already blocked wrote its fence first; completing it updates
+        // that same row instead of inserting a second obligation for the retired profile.
+        jdbc.update("""insert into ums_profile_erasure_obligations
+            (fence_reference, issuer_environment_ref, app_reference, subject_reference, obligation_kind,
+             cause_reference, retired_profile_reference, retired_generation, obligation_at, superseded_causes,
+             erased_binding_revision, erased_at, content_obligation, content_state, content_reference)
+            values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?::jsonb, ?, ?, ?, ?, ?)
+            on conflict (retired_profile_reference) do update set
+                obligation_kind = excluded.obligation_kind,
+                cause_reference = excluded.cause_reference,
+                obligation_at = excluded.obligation_at,
+                superseded_causes = excluded.superseded_causes,
+                erased_binding_revision = excluded.erased_binding_revision,
+                erased_at = excluded.erased_at,
+                content_obligation = excluded.content_obligation,
+                content_state = excluded.content_state,
+                content_reference = excluded.content_reference""",
+            UUID.randomUUID(), scope.issuerEnvironmentRef, scope.appReference, scope.subjectReference,
+            obligationKind, causeReference, retiredProfileReference, retiredGeneration,
+            Timestamp.from(obligationAt), supersededCauses, erasedRevision, Timestamp.from(erasedAt),
+            contentReference != null, contentState, contentReference)
+    }
+
+    /**
+     * Records a global final that is blocked by a live avatar association. Cleanup confirms or
+     * exhausts against this fence row, and a redelivered final can then erase.
+     */
+    fun recordBlockedFinal(
+        scope: ProfileScope, causeReference: UUID, retiredProfileReference: UUID, retiredGeneration: Long,
+        obligationAt: Instant, revision: Long, blockedAt: Instant, contentReference: String,
     ) {
         jdbc.update("""insert into ums_profile_erasure_obligations
             (fence_reference, issuer_environment_ref, app_reference, subject_reference, obligation_kind,
              cause_reference, retired_profile_reference, retired_generation, obligation_at, superseded_causes,
-             erased_binding_revision, erased_at)
-            values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?::jsonb, ?, ?)""",
+             erased_binding_revision, erased_at, content_obligation, content_state, content_reference)
+            values (?, ?, ?, ?, 'IAM_GLOBAL_BLOCKED', ?, ?, ?, ?, '[]'::jsonb, ?, ?, true, 'PENDING', ?)
+            on conflict (retired_profile_reference) do nothing""",
             UUID.randomUUID(), scope.issuerEnvironmentRef, scope.appReference, scope.subjectReference,
-            obligationKind, causeReference, retiredProfileReference, retiredGeneration,
-            Timestamp.from(obligationAt), supersededCauses, erasedRevision, Timestamp.from(erasedAt))
+            causeReference, retiredProfileReference, retiredGeneration, Timestamp.from(obligationAt),
+            revision, Timestamp.from(blockedAt), contentReference)
     }
 
     fun recordEvidence(
