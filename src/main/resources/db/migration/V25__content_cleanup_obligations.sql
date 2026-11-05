@@ -9,6 +9,9 @@ alter table ums_profile_erasure_obligations
     add constraint ums_profile_content_state_pair
         check ((content_reference is null) = (content_state = 'NONE'));
 
+-- A validated sweep needs fair rotation over every association it rechecks.
+alter table ums_profile_bindings add column content_checked_at timestamptz;
+
 -- An explicit clear or a replacement drops an association without erasing the profile; the
 -- reference still needs a durable, retryable cleanup request of its own.
 create table ums_content_cleanup_requests (

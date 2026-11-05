@@ -67,7 +67,10 @@ class ContentCleanupWorker(
     private val maxAttempts: Int = 8,
     private val repair: (() -> Int)? = null,
 ) {
-    /** Confirms cleanup for every pending debt, including a global final still blocked by one. */
+    /**
+     * Confirms cleanup for every pending debt and repairs invalid associations; the return value
+     * counts confirmed cleanups plus repaired associations.
+     */
     fun run(limit: Int = 50): Int {
         val pending = jdbc.query("""select fence_reference, issuer_environment_ref, app_reference,
                 subject_reference, content_reference, content_attempts
@@ -134,8 +137,8 @@ class ContentCleanupScheduler(private val worker: ContentCleanupWorker) {
     @Scheduled(fixedDelayString = "\${ums.content.cleanup.interval:PT5M}",
         initialDelayString = "\${ums.content.cleanup.initial-delay:PT1M}")
     fun run() {
-        val confirmed = worker.run()
-        if (confirmed > 0) log.info("Content cleanup confirmed {} obligations", confirmed)
+        val actions = worker.run()
+        if (actions > 0) log.info("Content cleanup/repair completed {} actions", actions)
     }
 
     private companion object {

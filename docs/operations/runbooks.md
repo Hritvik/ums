@@ -89,9 +89,9 @@ gauge, or page.
 
 ## Content revocation and cleanup
 
-1. A revoked asset invalidates the association on the next validated read or content fact; the
-   neutral avatar applies until a valid reference exists. An unavailable owner keeps the
-   association.
+1. The validated sweep clears an association the owner reports `REVOKED` or owned by another
+   scope, and the neutral avatar applies until a valid reference exists. An unavailable owner
+   keeps the association. Reads never call the provider.
 2. An erasure that dropped an avatar records a cleanup debt and erases local fields. It never
    claims the image is gone. Watch `ums.content.cleanup.pending` and `ums.content.cleanup.failed`.
 3. A `FAILED` debt means the retry budget is spent: confirm the content authority is reachable

@@ -31,7 +31,8 @@ class HttpContentAuthority(
             "appRegistrationId" to identity.first,
             "appSubject" to identity.second,
         )) ?: return ContentVerdict.UNAVAILABLE
-        val valid = response["valid"]?.asBoolean() ?: false
+        val validField = response["valid"]
+        val valid = validField?.isBoolean == true && validField.asBoolean()
         val state = response["state"]?.asText()
         val ownerApp = response["appRegistrationId"]?.asText()
         val ownerSubject = response["appSubject"]?.asText()
@@ -39,7 +40,11 @@ class HttpContentAuthority(
             // An outage is never a revocation, even when the owner also reports valid:false.
             state == "UNAVAILABLE" -> ContentVerdict.UNAVAILABLE
             state == "REVOKED" -> ContentVerdict.REVOKED
+            // An unrecognised or partial body must never destroy an association; only an explicit
+            // answer can do that.
+            validField?.isBoolean != true -> ContentVerdict.UNAVAILABLE
             !valid -> ContentVerdict.REVOKED
+            ownerApp == null || ownerSubject == null -> ContentVerdict.UNAVAILABLE
             ownerApp != identity.first || ownerSubject != identity.second -> ContentVerdict.OWNER_MISMATCH
             state == "READY" -> ContentVerdict.VALID
             else -> ContentVerdict.UNAVAILABLE

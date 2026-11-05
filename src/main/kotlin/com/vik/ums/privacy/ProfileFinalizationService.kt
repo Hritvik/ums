@@ -85,7 +85,11 @@ class ProfileFinalizationService(
                 erased_at = excluded.erased_at,
                 content_obligation = excluded.content_obligation,
                 content_state = excluded.content_state,
-                content_reference = excluded.content_reference""",
+                content_reference = excluded.content_reference,
+                content_attempts = case when excluded.content_state = 'PENDING' then 0
+                    else ums_profile_erasure_obligations.content_attempts end,
+                content_failure_class = case when excluded.content_state = 'PENDING' then null
+                    else ums_profile_erasure_obligations.content_failure_class end""",
             UUID.randomUUID(), scope.issuerEnvironmentRef, scope.appReference, scope.subjectReference,
             request.reference, request.profileReference, request.generation.toLong(), Timestamp.from(request.acceptedAt),
             superseded, revision, Timestamp.from(clock.instant()),

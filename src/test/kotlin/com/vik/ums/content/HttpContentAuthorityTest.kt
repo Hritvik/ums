@@ -111,8 +111,12 @@ class HttpContentAuthorityTest {
         ownership("""{"valid":true,"state":"PENDING","appRegistrationId":"$REGISTRATION","appSubject":"$SUBJECT"}""")
         assertThat(authority().check("asset_0123456789abcdef", scope)).isEqualTo(ContentVerdict.UNAVAILABLE)
 
+        // A partial body is unrecognised, not a revocation.
         ownership("""{"state":"READY"}""")
-        assertThat(authority().check("asset_0123456789abcdef", scope)).isEqualTo(ContentVerdict.REVOKED)
+        assertThat(authority().check("asset_0123456789abcdef", scope)).isEqualTo(ContentVerdict.UNAVAILABLE)
+
+        ownership("""{"valid":true,"state":"READY"}""")
+        assertThat(authority().check("asset_0123456789abcdef", scope)).isEqualTo(ContentVerdict.UNAVAILABLE)
 
         // An outage is never a revocation, even when the owner also reports valid:false.
         ownership("""{"valid":false,"state":"UNAVAILABLE"}""")

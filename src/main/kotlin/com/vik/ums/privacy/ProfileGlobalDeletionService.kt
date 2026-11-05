@@ -130,8 +130,10 @@ class ProfileGlobalDeletionService(
             val contentState = content.third
             val settled = contentState == "CONFIRMED" || contentState == "FAILED"
             // A settled fence only covers the association it was written for; a replacement
-            // avatar needs its own cleanup before the final can proceed.
+            // avatar needs its own cleanup before the final can proceed. A fence settled while the
+            // association was cleared out of band stays settled.
             val associationSettled = association != null && settled && fenceReference == association
+            val debtSettled = association == null && settled
             // A debt recorded by an earlier blocked attempt survives an out-of-band clear.
             val contentReference = association ?: fenceReference
             if (association != null && !associationSettled) {
@@ -157,7 +159,7 @@ class ProfileGlobalDeletionService(
             markPendingRequestsSuperseded(fact.scope)
             lifecycle.recordErasedObligation(fact.scope, "IAM_GLOBAL", fact.eventId, current.profileReference!!,
                 current.generation!!.toLong(), fact.occurredAt, superseded, revision, clock.instant(),
-                contentReference, if (associationSettled) contentState else
+                contentReference, if (associationSettled || debtSettled) contentState else
                     if (contentReference != null) "PENDING" else "NONE")
             invalidateExportsFor(jdbc, fact.scope, clock.instant())
             suppressNotices(jdbc, mapper, environment, fact.scope, fact.correlationId, clock.instant())

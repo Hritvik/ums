@@ -38,11 +38,16 @@ same transaction as the edit.
 2. explicit clear/replacement requests in `ums_content_cleanup_requests`;
 3. attachments the owner now reports `REVOKED` or owned by another scope, which are cleared with
    one canonical `FIELDS_CHANGED` event. `UNAVAILABLE` keeps the association. A mismatch never
-   asks the owner to revoke the other scope's asset.
+   asks the owner to revoke the other scope's asset. The oldest check rotates first and a checked
+   association is not queried again for an hour, so one pass cannot starve a later profile; if the
+   cleared field is required, readiness drops to `PROFILE_REQUIRED`.
 
 Cleanup is confirmed only by an explicit `{"confirmed": true}` answer. A `2xx` acknowledgement
 (`202`/`accepted`) is not confirmation. A failed attempt increments `content_attempts` and reads
 `FAILED` once the budget is exhausted; it never silently drops the debt.
+
+The worker returns the number of confirmed cleanups plus repaired associations; the scheduler log
+reports that total as actions, never a profile value.
 
 Metrics: `ums.content.cleanup.pending` and `ums.content.cleanup.failed` count both erasure fences
 and clear/replacement requests.
@@ -67,5 +72,6 @@ before the final can proceed.
   owner publishes the signature format and fixtures.
 - The signed acknowledgement callback (decision 3) is not implemented; polling is.
 - The sweeper has no distributed lease and uses a fixed cadence rather than bounded backoff; run
-  one active replica (as with the other maintenance workers) until a lease is added.
+  one active replica (as with the other maintenance workers) until a lease is added. Its repair
+  sweep rechecks each association at most hourly.
 - Confirmed cleanup rows are retained for audit, not pruned.
