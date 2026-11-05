@@ -90,8 +90,8 @@ class RestoreDrillTest {
         val restoredFlyway = Flyway.configure().dataSource(restored).load()
         assertThat(restoredFlyway.info().current()?.version?.version).isEqualTo("22")
         val upgrade = restoredFlyway.migrate()
-        assertThat(upgrade.migrationsExecuted).isEqualTo(1)
-        assertThat(restoredFlyway.info().current()?.version?.version).isEqualTo("23")
+        assertThat(upgrade.migrationsExecuted).isEqualTo(2)
+        assertThat(restoredFlyway.info().current()?.version?.version).isEqualTo("24")
 
         // The restored copy carries the pre-deletion row and no journal feed: the evidence must
         // come from outside the backup.
@@ -135,7 +135,7 @@ class RestoreDrillTest {
             mapper.writeValueAsString(record))
 
         assertThat(fencesAfter).isEqualTo(fencesBefore + 1)
-        assertThat(migration).isEqualTo("23")
+        assertThat(migration).isEqualTo("24")
         assertThat(checkpoints).isEqualTo(1)
         assertThat(backupAge).isLessThan(Duration.ofMinutes(5))
         assertThat(elapsed).isLessThan(Duration.ofMinutes(2))

@@ -33,6 +33,7 @@ class EmittedAssociationReport(unittest.TestCase):
         self.assertEqual(report['eventType'], 'ums.profile.association-report.v1')
         self.assertEqual(report['aggregate']['type'], 'UMS_PROFILE_BINDING')
         self.assertEqual(report['payload']['appSubject'], report['aggregate']['id'])
+        self.assertIn(report['environment'], ('development', 'test', 'staging', 'production'))
         self.assertIn('generation', report['payload'])
         text = json.dumps(report)
         for forbidden in ('displayName', 'displayLocale', 'displayTimezone', 'hid_', 'Bearer', 'memberId'):

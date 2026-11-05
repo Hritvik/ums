@@ -15,7 +15,7 @@ actually observed to `build/restore-drill.json`.
 | Lost changes | 1 — the erasure performed after the backup |
 | Restored fences, before reconciliation | 0 |
 | Restored fences, after reconciliation | 1 (`APP_DELETION` obligation for the retired generation) |
-| Migration result | 22 → 23 (the restored copy is upgraded before reconciliation) |
+| Migration result | 22 → 24 (the restored copy is upgraded before reconciliation) |
 | Checkpoint convergence | 1 checkpoint restored, unchanged by reconciliation |
 | Elapsed recovery | 269 ms from restore start to verified erased state |
 | Journal entries replayed | 1 |

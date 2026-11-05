@@ -6,7 +6,7 @@ import jakarta.servlet.http.HttpServletResponse
 /** Writes the contract's non-enumerating error envelope. Never echoes input or authority details. */
 object SafeErrors {
     const val CORRELATION_HEADER = "X-Correlation-Id"
-    private val CORRELATION = Regex("[A-Za-z0-9._:-]{1,128}")
+    private val CORRELATION = Regex("[A-Za-z0-9][A-Za-z0-9._:-]{0,127}")
 
     fun correlation(response: HttpServletResponse, request: jakarta.servlet.http.HttpServletRequest): String {
         val supplied = request.getHeader(CORRELATION_HEADER)?.takeIf { it.matches(CORRELATION) }

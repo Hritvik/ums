@@ -30,12 +30,17 @@ internal class AssociationReports(
             return
         }
         val stream = "${state.scope.issuerEnvironmentRef}:${state.scope.appReference}:${state.scope.subjectReference}:association"
-        if (reason == "FIELDS_CHANGED" && unchanged(stream, state)) return
-        val retiredGeneration = if (state.lifecycle == Lifecycle.ERASED) retiredGeneration(state) else null
+        // A display-only edit must stay silent even after retention removed the last published row.
+        if (reason == "FIELDS_CHANGED" && unchanged(state)) return
+        val retiredGeneration = if (state.lifecycle == Lifecycle.ERASED) {
+            retiredGeneration(state) ?: journalGeneration(state)
+        } else null
         if (state.lifecycle == Lifecycle.ERASED && retiredGeneration == null) {
-            log.warn("No erasure obligation found for an ERASED report in app {}", state.scope.appReference)
+            log.warn("No retired generation available for an ERASED report in app {}", state.scope.appReference)
             return
         }
+        val safeCorrelation = correlationId.takeIf { ENVELOPE_ID.matches(it) } ?: UUID.randomUUID().toString()
+        val contentObligation = if (state.lifecycle == Lifecycle.ERASED) contentObligation(state) else false
 
         val eventId = UUID.randomUUID()
         val payload = linkedMapOf<String, Any>(
@@ -45,7 +50,7 @@ internal class AssociationReports(
             "producer" to "ums",
             "environment" to environment,
             "occurredAt" to clock.instant().toString(),
-            "correlationId" to correlationId,
+            "correlationId" to safeCorrelation,
             "causationId" to causationId.toString(),
             "aggregate" to mapOf(
                 "type" to "UMS_PROFILE_BINDING",
@@ -57,16 +62,14 @@ internal class AssociationReports(
                 put("appSubject", appSubject)
                 put("profileState", state.readiness.name)
                 put("lifecycleState", state.lifecycle.name)
-                reasonFor(reason)?.let { put("lifecycleReason", it) }
+                reasonFor(reason, state.lifecycle)?.let { put("lifecycleReason", it) }
                 if (state.lifecycle == Lifecycle.ERASED) {
                     put("retiredGeneration", retiredGeneration!!)
                 } else {
                     put("generation", state.generation!!.toLong())
                     put("profileRevision", state.profileRevision!!)
                 }
-                // Erasure only proceeds while the avatar association is absent, so no cleanup
-                // obligation can exist for a report emitted today.
-                put("contentObligation", false)
+                put("contentObligation", contentObligation)
             },
         )
         jdbc.update("""insert into ums_event_outbox
@@ -76,6 +79,7 @@ internal class AssociationReports(
             eventId,
             state.scope.appReference.toString(), stream, state.bindingRevision.toLong(), EVENT_TYPE,
             mapper.writeValueAsString(payload), Timestamp.from(clock.instant()))
+        remember(state)
     }
 
     private fun mapping(scope: ProfileScope): Pair<String, String>? =
@@ -87,13 +91,24 @@ internal class AssociationReports(
             { rs: ResultSet, _: Int -> rs.getString(1) to rs.getString(2) },
             scope.issuerEnvironmentRef, scope.appReference, scope.subjectReference).singleOrNull()
 
-    /** Display-only edits do not report: skip when readiness and lifecycle are unchanged. */
-    private fun unchanged(stream: String, state: BindingState): Boolean =
-        jdbc.query("""select payload->'payload'->>'profileState', payload->'payload'->>'lifecycleState'
-            from ums_event_outbox where stream_id = ? and event_type = ?
-            order by stream_revision desc limit 1""",
-            { rs: ResultSet, _: Int -> rs.getString(1) to rs.getString(2) }, stream, EVENT_TYPE)
+    /** Last reported state kept in the database, so an outbox sweep cannot make a no-op report. */
+    private fun unchanged(state: BindingState): Boolean =
+        jdbc.query("""select readiness, lifecycle from ums_profile_association_state
+            where issuer_environment_ref = ? and app_reference = ? and subject_reference = ?""",
+            { rs: ResultSet, _: Int -> rs.getString(1) to rs.getString(2) },
+            state.scope.issuerEnvironmentRef, state.scope.appReference, state.scope.subjectReference)
             .singleOrNull() == (state.readiness.name to state.lifecycle.name)
+
+    private fun remember(state: BindingState) {
+        jdbc.update("""insert into ums_profile_association_state
+            (issuer_environment_ref, app_reference, subject_reference, readiness, lifecycle, updated_at)
+            values (?, ?, ?, ?, ?, current_timestamp)
+            on conflict (issuer_environment_ref, app_reference, subject_reference) do update
+                set readiness = excluded.readiness, lifecycle = excluded.lifecycle,
+                    updated_at = excluded.updated_at""",
+            state.scope.issuerEnvironmentRef, state.scope.appReference, state.scope.subjectReference,
+            state.readiness.name, state.lifecycle.name)
+    }
 
     private fun retiredGeneration(state: BindingState): Long? =
         jdbc.query("""select retired_generation from ums_profile_erasure_obligations
@@ -103,16 +118,41 @@ internal class AssociationReports(
             state.scope.issuerEnvironmentRef, state.scope.appReference, state.scope.subjectReference)
             .singleOrNull()
 
-    private fun reasonFor(reason: String): String? = when (reason) {
-        "DELETION_REQUESTED", "DELETION_CANCELLED", "CLOSED", "ERASED" -> reason
-        "REACTIVATED" -> "REOPENED"
+    /** The journal feed is the fallback tombstone handle when the obligation row is unavailable. */
+    private fun journalGeneration(state: BindingState): Long? =
+        jdbc.query("""select retired_generation from ums_erasure_journal_feed
+            where issuer_environment_ref = ? and app_reference = ? and subject_reference = ?
+            order by erased_at desc limit 1""",
+            { rs: ResultSet, _: Int -> rs.getLong(1) },
+            state.scope.issuerEnvironmentRef, state.scope.appReference, state.scope.subjectReference)
+            .singleOrNull()
+
+    private fun contentObligation(state: BindingState): Boolean =
+        jdbc.query("""select content_obligation from ums_profile_erasure_obligations
+            where issuer_environment_ref = ? and app_reference = ? and subject_reference = ?
+            order by erased_at desc limit 1""",
+            { rs: ResultSet, _: Int -> rs.getBoolean(1) },
+            state.scope.issuerEnvironmentRef, state.scope.appReference, state.scope.subjectReference)
+            .singleOrNull() ?: false
+
+    /**
+     * A reason describes the transition, not always the resulting state: a cancellation while a
+     * global cause is still live leaves the profile restricted, so it must not be reported active.
+     */
+    private fun reasonFor(reason: String, lifecycle: Lifecycle): String? = when (reason) {
+        "DELETION_REQUESTED" -> "DELETION_REQUESTED".takeIf { lifecycle == Lifecycle.DELETION_PENDING }
+        "DELETION_CANCELLED" -> "DELETION_CANCELLED".takeIf { lifecycle == Lifecycle.ACTIVE }
+        "CLOSED" -> "CLOSED".takeIf { lifecycle == Lifecycle.CLOSED }
+        "ERASED" -> "ERASED".takeIf { lifecycle == Lifecycle.ERASED }
+        "REACTIVATED" -> "REOPENED".takeIf { lifecycle == Lifecycle.ACTIVE }
         else -> null
     }
 
     private companion object {
         const val EVENT_TYPE = "ums.profile.association-report.v1"
-        val APP_SUBJECT = Regex("^aps_[A-Za-z0-9_-]{8,128}$")
+        val APP_SUBJECT = Regex("^aps_[A-Za-z0-9_-]{19,128}$")
         val REGISTRATION = Regex("^[a-z][a-z0-9-]{2,63}$")
+        val ENVELOPE_ID = Regex("^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$")
         val log = LoggerFactory.getLogger(AssociationReports::class.java)
     }
 }

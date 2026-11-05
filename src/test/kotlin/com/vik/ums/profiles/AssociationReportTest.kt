@@ -4,6 +4,7 @@ import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import com.vik.ums.lifecycle.ProfileClosureService
 import com.vik.ums.lifecycle.TrustedClosureFact
 import com.vik.ums.privacy.DeletionCancellationCommand
+import com.vik.ums.recovery.ErasureFeed
 import com.vik.ums.privacy.DeletionRequestCommand
 import com.vik.ums.privacy.MaintenancePurpose
 import com.vik.ums.privacy.PrivacyPurpose
@@ -49,7 +50,7 @@ class AssociationReportTest {
         val ds = DriverManagerDataSource(postgres.jdbcUrl, postgres.username, postgres.password)
         Flyway.configure().dataSource(ds).load().migrate()
         jdbc = JdbcTemplate(ds)
-        jdbc.execute("""truncate ums_profile_notice_intents, ums_erasure_journal_feed,
+        jdbc.execute("""truncate ums_profile_association_state, ums_profile_notice_intents, ums_erasure_journal_feed,
             ums_profile_erasure_obligations, ums_profile_lifecycle_evidence, ums_profile_privacy_audit,
             ums_profile_privacy_receipts, ums_profile_deletion_requests, ums_profile_deletion_causes,
             ums_iam_activation_owners, ums_iam_onboarding_receipts, ums_iam_subject_mappings,
@@ -165,6 +166,35 @@ class AssociationReportTest {
         assertThat(erased["payload"].has("profileRevision")).isFalse()
         assertThat(erased["payload"]["contentObligation"].asBoolean()).isFalse()
         write("association-report-erased", erased)
+    }
+
+    @Test fun `a display-only edit stays silent after the published rows are swept`() {
+        patch("Ada")
+        assertThat(reports()).hasSize(2)
+        jdbc.execute("delete from ums_event_outbox where event_type = 'ums.profile.association-report.v1'")
+
+        patch("Grace")
+
+        assertThat(reports()).isEmpty()
+    }
+
+    @Test fun `a tombstone falls back to the journal generation when the obligation is gone`() {
+        val generation = jdbc.queryForObject(
+            "select generation from ums_profile_bindings where subject_reference = ?", Long::class.java, subject)!!
+        jdbc.update("""update ums_profile_bindings set lifecycle = 'ERASED', readiness = 'PROFILE_REQUIRED',
+            profile_reference = null, generation = null, profile_revision = null,
+            binding_revision = binding_revision + 1 where subject_reference = ?""", subject)
+        ErasureFeed(jdbc).record(scope, UUID.randomUUID(), generation, revision(), clock.instant(),
+            "APP_DELETION", null)
+
+        AssociationReports(jdbc, mapper, "test", clock).emit(
+            BindingState(scope, revision().toString(), "1", Lifecycle.ERASED, Readiness.PROFILE_REQUIRED,
+                null, null, null),
+            "ERASED", UUID.randomUUID(), "association")
+
+        val erased = reports().last()
+        assertThat(erased["payload"]["lifecycleState"].asText()).isEqualTo("ERASED")
+        assertThat(erased["payload"]["retiredGeneration"].asLong()).isEqualTo(generation)
     }
 
     @Test fun `a profile without an app subject mapping emits no report`() {

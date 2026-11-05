@@ -31,19 +31,23 @@
       "const": "ums"
     },
     "environment": {
-      "type": "string",
-      "pattern": "^[a-z0-9-]{1,32}$"
+      "enum": [
+        "development",
+        "test",
+        "staging",
+        "production"
+      ]
     },
     "occurredAt": {
       "$ref": "common.json#/$defs/timestamp"
     },
     "correlationId": {
       "type": "string",
-      "pattern": "^[A-Za-z0-9._:-]{1,128}$"
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
     },
     "causationId": {
       "type": "string",
-      "pattern": "^[A-Za-z0-9._:-]{1,128}$"
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
     },
     "aggregate": {
       "type": "object",
@@ -59,7 +63,7 @@
         },
         "id": {
           "type": "string",
-          "pattern": "^aps_[A-Za-z0-9_-]{8,128}$"
+          "pattern": "^aps_[A-Za-z0-9_-]{19,128}$"
         },
         "version": {
           "type": "integer",
@@ -92,7 +96,7 @@
       "properties": {
         "appSubject": {
           "type": "string",
-          "pattern": "^aps_[A-Za-z0-9_-]{8,128}$"
+          "pattern": "^aps_[A-Za-z0-9_-]{19,128}$"
         },
         "profileState": {
           "enum": [

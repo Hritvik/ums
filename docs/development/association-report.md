@@ -9,12 +9,14 @@ the app-scoped profile state keyed by the same app registration and app subject.
 One outbox fact of type `ums.profile.association-report.v1` per binding revision that changes
 readiness or lifecycle, in the envelope accepted by the Dutch owner:
 
-- envelope: `schemaVersion` (integer), `eventId` (`evt_…`), `eventType`, `producer`, `environment`,
-  `occurredAt`, `correlationId`, `causationId`, `aggregate{type: UMS_PROFILE_BINDING, id: appSubject,
-  version: bindingRevision}`, `destination{appRegistrationId}`, `payload`.
+- envelope: `schemaVersion` (integer), `eventId` (`evt_…`), `eventType`, `producer`, `environment`
+  (one of `development|test|staging|production`), `occurredAt`, `correlationId` (the envelope's
+  pattern, or a generated UUID when the caller supplied an invalid one), `causationId`,
+  `aggregate{type: UMS_PROFILE_BINDING, id: appSubject, version: bindingRevision}`,
+  `destination{appRegistrationId}`, `payload`.
 - payload: `appSubject`, `profileState`, `lifecycleState`, optional `lifecycleReason`,
   `generation` and `profileRevision` for a live generation, `retiredGeneration` for `ERASED`, and a
-  boolean `contentObligation`.
+  boolean `contentObligation`, read from the erasure obligation.
 
 No display value, contact detail, token, Human Identity id, or Dutch member id is ever included.
 The schema is `contracts/v1/schemas/association-report.json`; a real emitted report and its tombstone
@@ -25,11 +27,15 @@ are validated by `contracts/producer-tests/test_emitted_association.py`.
 - Emitted in the same transaction as the profile state change, on its own outbox stream per binding.
 - `aggregate.version` is the binding revision and the ordering key; consumers must not infer order
   from timestamps.
-- A display-only patch that leaves readiness and lifecycle unchanged is not reported; the emitter
-  compares the latest report for the stream.
-- A deletion cancellation reports `ACTIVE` with `lifecycleReason: DELETION_CANCELLED` and the same
-  generation.
-- Erasure reports only the tombstone fields, so a stale `ACTIVE` cannot be mistaken for a new life.
+- A display-only patch that leaves readiness and lifecycle unchanged is not reported. The last
+  reported state is persisted (`ums_profile_association_state`), so a retention sweep of the outbox
+  cannot make a later display-only edit look like a change.
+- A deletion cancellation reports `ACTIVE` with `lifecycleReason: DELETION_CANCELLED` only when the
+  profile actually returns to active; when another cause keeps it restricted, the report carries
+  the actual lifecycle and no misleading reason.
+- Erasure reports only the tombstone fields, using the erasure obligation (and, if that row is
+  missing, the erasure journal feed) for `retiredGeneration`; a stale `ACTIVE` cannot be mistaken
+  for a new life.
 
 ## Dependencies and failure behaviour
 

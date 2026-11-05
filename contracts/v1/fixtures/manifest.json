@@ -388,5 +388,15 @@
     "file": "association-report-invalid-display.json",
     "schema": "association-report.json",
     "valid": false
+  },
+  {
+    "file": "association-report-invalid-tombstone.json",
+    "schema": "association-report.json",
+    "valid": false
+  },
+  {
+    "file": "association-report-invalid-environment.json",
+    "schema": "association-report.json",
+    "valid": false
   }
 ]

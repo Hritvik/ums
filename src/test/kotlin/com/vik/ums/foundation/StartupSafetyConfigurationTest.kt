@@ -55,9 +55,11 @@ class StartupSafetyConfigurationTest {
         }.isInstanceOf(IllegalArgumentException::class.java)
     }
 
-    @Test fun `a malformed environment name is refused`() {
-        assertThatThrownBy { StartupSafetyConfiguration(valid().withProperty("ums.environment", "TEST ENV")) }
-            .isInstanceOf(IllegalArgumentException::class.java)
+    @Test fun `a malformed or unpublished environment name is refused`() {
+        listOf("TEST ENV", "local", "production-eu").forEach { value ->
+            assertThatThrownBy { StartupSafetyConfiguration(valid().withProperty("ums.environment", value)) }
+                .describedAs(value).isInstanceOf(IllegalArgumentException::class.java)
+        }
     }
 
     @Test fun `empty locale and timezone catalogues are refused`() {

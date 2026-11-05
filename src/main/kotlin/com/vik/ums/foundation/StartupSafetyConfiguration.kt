@@ -21,8 +21,8 @@ class StartupSafetyConfiguration(environment: Environment) {
         }
         required(environment, "spring.datasource.username")
         required(environment, "spring.datasource.password")
-        require(required(environment, "ums.environment").matches(Regex("[a-z0-9-]{1,32}"))) {
-            "ums.environment must be a lowercase environment name"
+        require(required(environment, "ums.environment") in setOf("development", "test", "staging", "production")) {
+            "ums.environment must be development, test, staging, or production"
         }
         required(environment, "ums.profile.locale-version")
         required(environment, "ums.profile.timezone-version")
