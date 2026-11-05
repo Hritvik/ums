@@ -240,6 +240,31 @@ class ContentAttachmentTest {
             String::class.java)).isEqualTo("APP_DELETION:PENDING:$reference:0")
     }
 
+    @Test fun `a redelivered blocked final does not restart the retry budget`() {
+        attach(TrustedContentAttachment(reference, scope))
+        val global = ProfileGlobalDeletionService(jdbc, transactions, mapper, "test", clock)
+        val provider = TrustedProviderAuthority(AppScope(issuer, app), UUID.randomUUID())
+        global.applyPending(provider, GlobalPendingFact(scope, 1, clock.instant(),
+            clock.instant().plus(Duration.ofDays(30)), UUID.randomUUID(), "global"))
+        val fact = GlobalFinalFact(scope, 2, clock.instant(), UUID.randomUUID(), "global")
+        val failing = StubAuthority(cleanupSucceeds = false)
+        val worker = ContentCleanupWorker(jdbc, failing, maxAttempts = 2)
+
+        assertThat(global.finalize(provider, fact).outcome).isEqualTo(GlobalDeletionOutcome.CONTENT_BLOCKED)
+        assertThat(worker.run()).isZero()
+        assertThat(jdbc.queryForObject("select content_attempts from ums_profile_erasure_obligations",
+            Int::class.java)).isEqualTo(1)
+
+        assertThat(global.finalize(provider, fact).outcome).isEqualTo(GlobalDeletionOutcome.CONTENT_BLOCKED)
+        assertThat(jdbc.queryForObject("select content_attempts from ums_profile_erasure_obligations",
+            Int::class.java)).isEqualTo(1)
+
+        assertThat(worker.run()).isZero()
+        assertThat(jdbc.queryForObject("select content_state from ums_profile_erasure_obligations",
+            String::class.java)).isEqualTo("FAILED")
+        assertThat(global.finalize(provider, fact).outcome).isEqualTo(GlobalDeletionOutcome.APPLIED)
+    }
+
     @Test fun `a confirmed debt stays confirmed when the association was cleared out of band`() {
         attach(TrustedContentAttachment(reference, scope))
         val global = ProfileGlobalDeletionService(jdbc, transactions, mapper, "test", clock)

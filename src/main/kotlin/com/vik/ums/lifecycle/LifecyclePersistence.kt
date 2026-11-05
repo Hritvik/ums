@@ -118,8 +118,13 @@ internal class LifecyclePersistence(private val jdbc: JdbcTemplate) {
             on conflict (retired_profile_reference) do update set
                 content_reference = excluded.content_reference,
                 content_state = 'PENDING',
-                content_attempts = 0,
-                content_failure_class = null""",
+                -- A redelivery for the same asset must not restart the retry budget.
+                content_attempts = case when ums_profile_erasure_obligations.content_reference
+                    is distinct from excluded.content_reference then 0
+                    else ums_profile_erasure_obligations.content_attempts end,
+                content_failure_class = case when ums_profile_erasure_obligations.content_reference
+                    is distinct from excluded.content_reference then null
+                    else ums_profile_erasure_obligations.content_failure_class end""",
             UUID.randomUUID(), scope.issuerEnvironmentRef, scope.appReference, scope.subjectReference,
             causeReference, retiredProfileReference, retiredGeneration, Timestamp.from(obligationAt),
             revision, Timestamp.from(blockedAt), contentReference)

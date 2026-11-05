@@ -19,8 +19,8 @@ class ContentConfiguration {
                              clock: java.time.Clock): ContentCleanupWorker =
         ContentCleanupWorker(jdbc, authority,
             environment.getProperty("ums.content.cleanup.max-attempts", "8").toInt(),
-            ContentAssociationRepair(jdbc, transactions, mapper,
-                environment.getRequiredProperty("ums.environment"), authority, clock)::run)
+            { limit -> ContentAssociationRepair(jdbc, transactions, mapper,
+                environment.getRequiredProperty("ums.environment"), authority, clock).run(limit) })
 
     @Bean
     @ConditionalOnProperty(name = ["ums.content.authority-uri"])
@@ -65,7 +65,7 @@ class ContentCleanupWorker(
     private val jdbc: JdbcTemplate,
     private val authority: ContentAuthority,
     private val maxAttempts: Int = 8,
-    private val repair: (() -> Int)? = null,
+    private val repair: ((Int) -> Int)? = null,
 ) {
     /**
      * Confirms cleanup for every pending debt and repairs invalid associations; the return value
@@ -96,7 +96,7 @@ class ContentCleanupWorker(
                     entry.fence)
             }
         }
-        return confirmed + confirmClearedAvatars(limit) + (repair?.invoke() ?: 0)
+        return confirmed + confirmClearedAvatars(limit) + (repair?.invoke(limit) ?: 0)
     }
 
     /** Confirms cleanup for avatars dropped by an explicit clear or a replacement. */
