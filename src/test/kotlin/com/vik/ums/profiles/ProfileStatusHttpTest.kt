@@ -573,11 +573,11 @@ class ProfileStatusHttpTest {
         val before = jdbc.queryForObject("select binding_revision from ums_profile_bindings where subject_reference = ?",
             Long::class.java, subjectReference)
 
-        val outboxBefore = jdbc.queryForObject("select count(*) from ums_event_outbox", Int::class.java)
+        val outboxBefore = jdbc.queryForObject("select count(*) from ums_event_outbox where event_type = 'ums.profile.state-changed.v1'", Int::class.java)
         mockMvc.perform(patch("/api/v1/profile").contentType(MediaType.APPLICATION_JSON)
             .header("Idempotency-Key", uuid()).content(patchBody("Foreign Attempt")))
             .andExpect(status().isNotFound)
-        assertThat(jdbc.queryForObject("select count(*) from ums_event_outbox", Int::class.java))
+        assertThat(jdbc.queryForObject("select count(*) from ums_event_outbox where event_type = 'ums.profile.state-changed.v1'", Int::class.java))
             .isEqualTo(outboxBefore)
 
         assertThat(jdbc.queryForObject("select binding_revision from ums_profile_bindings where subject_reference = ?",
@@ -602,7 +602,8 @@ class ProfileStatusHttpTest {
                 .andExpect(status().isBadRequest)
                 .andReturn().response.contentAsString
 
-            val payloads = jdbc.queryForList("select payload::text from ums_event_outbox", String::class.java)
+            val payloads = jdbc.queryForList("""select payload::text from ums_event_outbox
+                where event_type <> 'ums.profile.association-report.v1'""", String::class.java)
             val auditIds = jdbc.queryForList("select correlation_id from ums_profile_privacy_audit", String::class.java)
             val fingerprints = listOf(
                 "select input_fingerprint from ums_profile_patch_receipts",
@@ -614,6 +615,16 @@ class ProfileStatusHttpTest {
                 assertThat(value).doesNotContain(marker, "eyJ", "hid_", "aps_", "Bearer ")
             }
             fingerprints.forEach { assertThat(it).matches("[0-9a-f]{64}") }
+            val association = jdbc.queryForList("""select payload::text from ums_event_outbox
+                where event_type = 'ums.profile.association-report.v1'""", String::class.java)
+            association.forEach { text ->
+                val node = mapper.readTree(text)
+                assertThat(text).doesNotContain(marker, "hid_", "Bearer ")
+                assertThat(node["payload"]["appSubject"].asText()).startsWith("aps_")
+                assertThat(node["payload"].fieldNames().asSequence().toSet()).isSubsetOf(
+                    "appSubject", "profileState", "lifecycleState", "lifecycleReason", "generation",
+                    "profileRevision", "retiredGeneration", "contentObligation")
+            }
             assertThat(errorBody).doesNotContain(marker, "eyJ", "aps_", "Bearer ")
             appender.list.forEach { event ->
                 val line = event.formattedMessage + (event.throwableProxy?.message ?: "")

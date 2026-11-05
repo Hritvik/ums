@@ -181,10 +181,10 @@ class ProfileClosureTest {
     }
 
     private fun eventCount(): Int =
-        jdbc.queryForObject("select count(*) from ums_event_outbox", Int::class.java)!!
+        jdbc.queryForObject("select count(*) from ums_event_outbox where event_type = 'ums.profile.state-changed.v1'", Int::class.java)!!
 
     private fun event(revision: Long) = mapper.readTree(
-        jdbc.queryForObject("select payload::text from ums_event_outbox where stream_revision = ?", String::class.java, revision))
+        jdbc.queryForObject("select payload::text from ums_event_outbox where event_type = 'ums.profile.state-changed.v1' and stream_revision = ?", String::class.java, revision))
 
     private fun write(name: String, value: String) {
         val directory = Path.of("build", "generated-contract-fixtures")

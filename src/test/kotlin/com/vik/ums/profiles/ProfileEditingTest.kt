@@ -59,7 +59,7 @@ class ProfileEditingTest {
         val status = provisioning.status(app, scope)
         assertThat(status.state?.readiness).isEqualTo(Readiness.PROFILE_READY)
         assertThat(status.unmetFields).isEmpty()
-        val payload = jdbc.queryForObject("select payload::text from ums_event_outbox where stream_revision=2", String::class.java)!!
+        val payload = jdbc.queryForObject("select payload::text from ums_event_outbox where event_type = 'ums.profile.state-changed.v1' and stream_revision=2", String::class.java)!!
         assertThat(payload).doesNotContain("Áda", "Asia/Kolkata", "en-IN", "displayName")
         val projection = TrustedProjectionAuthority(app, "member-display", setOf(result.profileReference), ProfileField.entries.toSet())
         val batch = editing.displayBatch(projection, listOf(result.profileReference))
@@ -88,7 +88,7 @@ class ProfileEditingTest {
         val noop = command(mapOf(ProfileField.DISPLAY_NAME to null, ProfileField.AVATAR_REFERENCE to null))
         assertThat(editing.patch(authority, noop).appliedRevision).isEqualTo("1")
         assertThat(editing.patch(authority, noop).appliedRevision).isEqualTo("1")
-        assertThat(jdbc.queryForObject("select count(*) from ums_event_outbox", Long::class.java)).isEqualTo(1)
+        assertThat(jdbc.queryForObject("select count(*) from ums_event_outbox where event_type = 'ums.profile.state-changed.v1'", Long::class.java)).isEqualTo(1)
         editing.patch(authority, command(mapOf(ProfileField.DISPLAY_NAME to "Name")))
         editing.patch(authority, command(mapOf(ProfileField.DISPLAY_NAME to null), 2))
         assertThat(provisioning.status(app, scope).state?.readiness).isEqualTo(Readiness.PROFILE_REQUIRED)
@@ -163,7 +163,7 @@ class ProfileEditingTest {
             assertThat(outcomes.count { it.isSuccess }).isEqualTo(1)
             assertThat(outcomes.count { it.exceptionOrNull() is IllegalStateException }).isEqualTo(1)
             assertThat(editing.display(authority).profileRevision).isEqualTo("2")
-            assertThat(jdbc.queryForObject("select count(*) from ums_event_outbox", Long::class.java)).isEqualTo(2)
+            assertThat(jdbc.queryForObject("select count(*) from ums_event_outbox where event_type = 'ums.profile.state-changed.v1'", Long::class.java)).isEqualTo(2)
         } finally { pool.shutdownNow() }
     }
 

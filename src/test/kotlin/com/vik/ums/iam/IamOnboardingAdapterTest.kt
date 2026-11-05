@@ -113,7 +113,7 @@ class IamOnboardingAdapterTest {
         val restarted = newAdapter(TrustedIamSource(app.issuerEnvironmentRef, "test"), mapOf("dutch-development" to app))
         assertThat(restarted.consume(event(), "dutch-development").outcome).isEqualTo(ProvisioningOutcome.DUPLICATE)
         assertThat(jdbc.queryForObject("select count(*) from ums_iam_subject_mappings", Long::class.java)).isEqualTo(1)
-        assertThat(jdbc.queryForObject("select count(*) from ums_event_outbox", Long::class.java)).isEqualTo(1)
+        assertThat(jdbc.queryForObject("select count(*) from ums_event_outbox where event_type = 'ums.profile.state-changed.v1'", Long::class.java)).isEqualTo(1)
     }
 
     @Test fun `source and app mappings isolate original subjects and prohibit event rebind`() {

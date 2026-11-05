@@ -73,13 +73,13 @@ class ProfileFinalizationTest {
         assertThat(completed.cancellationEligible).isFalse()
         assertThat(finalizer.finalize(authority, scope, accepted.operationReference, "retry")).isEqualTo(completed)
         assertThat(deletion.status(human(PrivacyPurpose.READ_DELETION_STATUS), accepted.operationReference)).isEqualTo(completed)
-        val erased = mapper.readTree(jdbc.queryForObject("select payload::text from ums_event_outbox where stream_revision=4", String::class.java))
+        val erased = mapper.readTree(jdbc.queryForObject("select payload::text from ums_event_outbox where event_type = 'ums.profile.state-changed.v1' and stream_revision=4", String::class.java))
         assertThat(erased["reason"].asText()).isEqualTo("ERASED")
         assertThat(erased["state"]["lifecycle"].asText()).isEqualTo("ERASED")
         assertThat(erased["state"].has("profileReference")).isFalse()
         write("deletion-erased-event", mapper.writeValueAsString(erased))
         write("deletion-completed-status", mapper.writeValueAsString(completed))
-        assertThat(jdbc.queryForObject("select count(*) from ums_event_outbox where stream_revision=4", Long::class.java)).isEqualTo(1)
+        assertThat(jdbc.queryForObject("select count(*) from ums_event_outbox where event_type = 'ums.profile.state-changed.v1' and stream_revision=4", Long::class.java)).isEqualTo(1)
         assertThat(jdbc.queryForObject("select count(*) from ums_input_checkpoints", Long::class.java)).isEqualTo(1)
         assertThat(jdbc.queryForObject("select count(*) from ums_event_inbox", Long::class.java)).isEqualTo(1)
         assertThatThrownBy { editing.display(TrustedHumanAuthority(scope, UUID.randomUUID(), setOf(HumanAction.READ))) }
@@ -149,7 +149,7 @@ class ProfileFinalizationTest {
             assertThat(results.count { it.isSuccess }).isEqualTo(2)
             assertThat(results.count { it.exceptionOrNull() is IllegalStateException }).isEqualTo(1)
             assertThat(jdbc.queryForObject("select count(*) from ums_profile_erasure_obligations", Long::class.java)).isEqualTo(1)
-            assertThat(jdbc.queryForObject("select count(*) from ums_event_outbox where stream_revision=3", Long::class.java)).isEqualTo(1)
+            assertThat(jdbc.queryForObject("select count(*) from ums_event_outbox where event_type = 'ums.profile.state-changed.v1' and stream_revision=3", Long::class.java)).isEqualTo(1)
         } finally { pool.shutdownNow() }
     }
 

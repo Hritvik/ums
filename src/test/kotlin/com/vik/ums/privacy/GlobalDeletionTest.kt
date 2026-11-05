@@ -97,7 +97,7 @@ class GlobalDeletionTest {
             editing.display(TrustedHumanAuthority(scope, UUID.randomUUID(), setOf(HumanAction.READ)))
         }.isInstanceOf(IllegalStateException::class.java)
         val event = mapper.readTree(jdbc.queryForObject(
-            "select payload::text from ums_event_outbox where stream_revision = 2", String::class.java)!!)
+            "select payload::text from ums_event_outbox where event_type = 'ums.profile.state-changed.v1' and stream_revision = 2", String::class.java)!!)
         assertThat(event["reason"].asText()).isEqualTo("DELETION_REQUESTED")
         assertThat(event["state"]["deletionCauses"]["iamGlobal"]["deadline"].asText()).isEqualTo(deadline.toString())
         assertThat(event["state"]["deletionCauses"].has("appOnly")).isFalse()
@@ -175,7 +175,7 @@ class GlobalDeletionTest {
         val evidence = jdbc.queryForList("select action from ums_profile_lifecycle_evidence", String::class.java)
         assertThat(evidence).contains("GLOBAL_ERASED")
         val event = mapper.readTree(jdbc.queryForObject(
-            "select payload::text from ums_event_outbox where stream_revision = 3", String::class.java)!!)
+            "select payload::text from ums_event_outbox where event_type = 'ums.profile.state-changed.v1' and stream_revision = 3", String::class.java)!!)
         assertThat(event["reason"].asText()).isEqualTo("ERASED")
         assertThat(event["state"]["deletionCauses"].isEmpty).isTrue()
     }
@@ -203,7 +203,7 @@ class GlobalDeletionTest {
         pending(1)
         val revision = jdbc.queryForObject("select global_source_revision from ums_profile_bindings", Long::class.java)
         val causes = jdbc.queryForObject("select count(*) from ums_profile_deletion_causes", Int::class.java)
-        val events = jdbc.queryForObject("select count(*) from ums_event_outbox", Int::class.java)
+        val events = jdbc.queryForObject("select count(*) from ums_event_outbox where event_type = 'ums.profile.state-changed.v1'", Int::class.java)
 
         assertThat(pending(1).outcome).isEqualTo(GlobalDeletionOutcome.STALE)
 
@@ -211,7 +211,7 @@ class GlobalDeletionTest {
             .isEqualTo(revision)
         assertThat(jdbc.queryForObject("select count(*) from ums_profile_deletion_causes", Int::class.java))
             .isEqualTo(causes)
-        assertThat(jdbc.queryForObject("select count(*) from ums_event_outbox", Int::class.java)).isEqualTo(events)
+        assertThat(jdbc.queryForObject("select count(*) from ums_event_outbox where event_type = 'ums.profile.state-changed.v1'", Int::class.java)).isEqualTo(events)
     }
 
     @Test fun `concurrent finals erase once and the loser is stale`() {
@@ -232,7 +232,7 @@ class GlobalDeletionTest {
         }
         assertThat(jdbc.queryForObject("select count(*) from ums_profile_erasure_obligations", Int::class.java))
             .isEqualTo(1)
-        assertThat(jdbc.queryForObject("select count(*) from ums_event_outbox", Int::class.java)).isEqualTo(2)
+        assertThat(jdbc.queryForObject("select count(*) from ums_event_outbox where event_type = 'ums.profile.state-changed.v1'", Int::class.java)).isEqualTo(2)
     }
 
     @Test fun `a legacy retained restriction stays closed after cancellation`() {
@@ -286,12 +286,12 @@ class GlobalDeletionTest {
         assertThat(pending(2).outcome).isEqualTo(GlobalDeletionOutcome.STALE)
 
         assertThat(final(3).outcome).isEqualTo(GlobalDeletionOutcome.APPLIED)
-        val events = jdbc.queryForObject("select count(*) from ums_event_outbox", Int::class.java)
+        val events = jdbc.queryForObject("select count(*) from ums_event_outbox where event_type = 'ums.profile.state-changed.v1'", Int::class.java)
 
         assertThat(pending(3).outcome).isEqualTo(GlobalDeletionOutcome.STALE)
         assertThat(cancel(3).outcome).isEqualTo(GlobalDeletionOutcome.STALE)
         assertThat(final(4).outcome).isEqualTo(GlobalDeletionOutcome.STALE)
-        assertThat(jdbc.queryForObject("select count(*) from ums_event_outbox", Int::class.java)).isEqualTo(events)
+        assertThat(jdbc.queryForObject("select count(*) from ums_event_outbox where event_type = 'ums.profile.state-changed.v1'", Int::class.java)).isEqualTo(events)
     }
 
     @Test fun `a later global obligation does not withdraw retention notices`() {

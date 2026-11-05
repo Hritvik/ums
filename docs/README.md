@@ -23,6 +23,7 @@ identity/authentication; products retain their business data and permissions.
 - [Restore recovery](development/recovery.md): Slice F3 erasure journal, reconciliation, and backup signals.
 - [Restore drill](development/restore-drill.md): recorded drill and the operator runbook.
 - [Retention sweeps](development/retention.md): Slice F2 declared lifetimes, bounded batches, and fence preservation.
+- [Association report](development/association-report.md): Slice C4 correlation input for the Dutch member mapping.
 - [Outbox relay](development/outbox-relay.md): Slice F1 at-least-once delivery, ordering, retry, quarantine, and repair.
 - [Scoped exports](development/exports.md): Slice E2 artifact lifetime, single-use capability, and revocation.
 - [Profile HTTP vertical](development/profile-http.md): Slice C3 first shipped status route, caller interceptor, and mapping.

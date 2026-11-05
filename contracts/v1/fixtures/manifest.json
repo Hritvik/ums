@@ -378,5 +378,15 @@
     "file": "export-download-request-invalid-short.json",
     "schema": "export-download-request.json",
     "valid": false
+  },
+  {
+    "file": "association-report.json",
+    "schema": "association-report.json",
+    "valid": true
+  },
+  {
+    "file": "association-report-invalid-display.json",
+    "schema": "association-report.json",
+    "valid": false
   }
 ]

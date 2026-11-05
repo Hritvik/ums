@@ -72,7 +72,7 @@ class IamSnapshotRepairTest {
         assertThat(checkpoint()).isEqualTo(2)
         assertThat(jdbc.queryForObject("select binding_revision from ums_profile_bindings", Long::class.java))
             .isEqualTo(1)
-        assertThat(jdbc.queryForObject("select count(*) from ums_event_outbox", Long::class.java)).isEqualTo(1)
+        assertThat(jdbc.queryForObject("select count(*) from ums_event_outbox where event_type = 'ums.profile.state-changed.v1'", Long::class.java)).isEqualTo(1)
     }
 
     @Test fun `an equal or older snapshot version changes nothing`() {

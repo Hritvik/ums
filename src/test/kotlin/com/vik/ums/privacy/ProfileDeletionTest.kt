@@ -74,7 +74,7 @@ class ProfileDeletionTest {
             .isInstanceOf(IllegalStateException::class.java)
         assertThat(provisioning.provision(TrustedOnboardingFact(scope, "iam-test", UUID.randomUUID(), "entry", 2, "privacy")).outcome)
             .isEqualTo(ProvisioningOutcome.RESTRICTED)
-        val state = jdbc.queryForObject("select payload::text from ums_event_outbox where stream_revision=2", String::class.java)!!
+        val state = jdbc.queryForObject("select payload::text from ums_event_outbox where event_type = 'ums.profile.state-changed.v1' and stream_revision=2", String::class.java)!!
         assertThat(mapper.readTree(state)["state"]["deletionCauses"]["appOnly"]["deadline"].asText()).isEqualTo(status.deadline)
     }
 
@@ -274,7 +274,7 @@ class ProfileDeletionTest {
         jdbc.update("update ums_profile_bindings set lifecycle='DELETION_PENDING', readiness='PROFILE_REQUIRED'")
     }
     private fun event(revision: Long): String = jdbc.queryForObject(
-        "select payload::text from ums_event_outbox where stream_revision = ?", String::class.java, revision)!!
+        "select payload::text from ums_event_outbox where event_type = 'ums.profile.state-changed.v1' and stream_revision = ?", String::class.java, revision)!!
     private fun write(name: String, value: String) {
         val path = java.nio.file.Path.of("build/generated-contract-fixtures/$name.json")
         java.nio.file.Files.createDirectories(path.parent)

@@ -64,7 +64,7 @@ class IamEventIngestionTest {
         assertThat(ingestion.ingest(request(event())).outcome).isEqualTo(IngestionOutcome.DUPLICATE)
 
         assertThat(jdbc.queryForObject("select count(*) from ums_profile_bindings", Long::class.java)).isEqualTo(1)
-        assertThat(jdbc.queryForObject("select count(*) from ums_event_outbox", Long::class.java)).isEqualTo(1)
+        assertThat(jdbc.queryForObject("select count(*) from ums_event_outbox where event_type = 'ums.profile.state-changed.v1'", Long::class.java)).isEqualTo(1)
         assertThat(ingestion.openQuarantineCount()).isZero()
     }
 

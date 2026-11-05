@@ -145,7 +145,7 @@ class LocalConsumerJourneyTest {
         try {
             assertThatThrownBy { adapter.consume(input(), "dutch-development") }.isInstanceOf(RuntimeException::class.java)
             assertThat(jdbc.queryForObject("select count(*) from ums_profile_bindings", Long::class.java)).isZero()
-            assertThat(jdbc.queryForObject("select count(*) from ums_event_outbox", Long::class.java)).isZero()
+            assertThat(jdbc.queryForObject("select count(*) from ums_event_outbox where event_type = 'ums.profile.state-changed.v1'", Long::class.java)).isZero()
             assertThat(consumer.state()).isEqualTo("WAIT")
         } finally { jdbc.execute("alter table ums_event_outbox drop constraint journey_outbox_failure") }
         assertThat(adapter.consume(input(), "dutch-development").outcome).isEqualTo(ProvisioningOutcome.PROVISIONED)
@@ -176,7 +176,7 @@ class LocalConsumerJourneyTest {
         UUID.randomUUID(), version, mapOf(ProfileField.DISPLAY_NAME to name), "journey")
 
     private fun outbox(revision: Long): String = jdbc.queryForObject(
-        "select payload::text from ums_event_outbox where stream_revision = ?", String::class.java, revision)!!
+        "select payload::text from ums_event_outbox where event_type = 'ums.profile.state-changed.v1' and stream_revision = ?", String::class.java, revision)!!
     private fun write(name: String, payload: String) {
         val path = Path.of("build/generated-contract-fixtures/$name.json")
         Files.createDirectories(path.parent)

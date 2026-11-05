@@ -9,6 +9,7 @@ import java.util.UUID
 internal class ProfileStateEvents(
     private val jdbc: JdbcTemplate, private val mapper: ObjectMapper, private val environment: String, private val clock: Clock,
 ) {
+    private val association = AssociationReports(jdbc, mapper, environment, clock)
     init { require(environment.matches(Regex("[a-z0-9-]{1,32}"))) }
     fun emit(state: BindingState, reason: String, causationId: UUID, correlationId: String) {
         val eventId = UUID.randomUUID()
@@ -24,5 +25,6 @@ internal class ProfileStateEvents(
             state.scope.appReference.toString(),
             "${state.scope.issuerEnvironmentRef}:${state.scope.appReference}:${state.scope.subjectReference}",
             state.bindingRevision.toLong(), payload, java.sql.Timestamp.from(occurredAt))
+        association.emit(state, reason, causationId, correlationId)
     }
 }
