@@ -241,9 +241,9 @@ Five provider inputs do not exist yet and are carried as named gaps rather than 
 
 **Summary.** Dutch keeps its own member records and needs to know which UMS profile belongs to which member. No such contract exists, so the integration cannot be built. This item establishes it with Dutch as the owning party and connects the two sides without moving any Dutch rules into UMS.
 
-**Status.** Blocked — the association report is proposed in
-[association-report-v1.md](../contracts/proposed/association-report-v1.md) and awaits Dutch owner
-acceptance; the retired `ums.member.mapping.changed.v1` event is not revived.
+**Status.** Ready — the association report is accepted in
+[association-report-v1.md](../contracts/proposed/association-report-v1.md) (2026-11-05); the retired
+`ums.member.mapping.changed.v1` event is not revived.
 
 **Work to be done.**
 - Agree with the Dutch owner on the association record, its keys, its lifecycle, and who publishes what; write it down as a versioned contract with fixtures before writing client code.
@@ -334,9 +334,9 @@ acceptance; the retired `ums.member.mapping.changed.v1` event is not revived.
 
 **Summary.** An avatar is currently just a stored reference, because no content provider has agreed how attachments are created, revoked, or cleaned up. Until that exists, a person cannot attach one and erasure cannot honestly claim the image is gone. This item closes that gap with the content owner.
 
-**Status.** Blocked — the attachment contract is proposed in
-[content-attachment-v1.md](../contracts/proposed/content-attachment-v1.md) and awaits content owner
-acceptance; avatar attachment stays disabled until then.
+**Status.** Ready — the attachment contract is accepted in
+[content-attachment-v1.md](../contracts/proposed/content-attachment-v1.md) (2026-11-05); avatar
+attachment stays disabled until the fixtures exist and both sides validate them.
 
 **Work to be done.**
 - Agree with the content owner on reference format, attach and revoke semantics, ownership verification, cleanup confirmation, and what UMS may claim.

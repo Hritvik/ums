@@ -1,13 +1,10 @@
-# PROPOSED — not accepted
+# ACCEPTED — content attachment contract v1 (content owner → UMS)
 
-> This is a proposal for the content owner to accept, amend, or reject. No UMS code may depend on
-> it until the owner accepts a version. Avatar attachment stays disabled until then.
+> Accepted 2026-11-05 by the content owner. Decision record:
+> `portfolio-planning/capabilities/work/decisions/2026-11-05-ums-contract-decisions.md`.
 >
-> **Review status:** independently reviewed; the first draft used a single-use reference, allowed a
-> network call inside the profile transaction, and contradicted itself on erasure. This revision
-> fixes those.
-
-# Content attachment contract v1 (content owner → UMS), proposal
+> UMS may now build against this version. Avatar attachment stays disabled until the contract
+> fixtures exist and both sides validate them.
 
 ## Ownership
 
@@ -22,7 +19,8 @@
 ## Reference
 
 An opaque, immutable, app-and-subject-bound token: `asset_` plus a bounded alphabet and length
-(the existing `avatarReference` field allows at most 256 characters of `[A-Za-z0-9_-]`). It is
+(the existing `avatarReference` field allows at most 256 characters of `[A-Za-z0-9_-]`). Accepted
+format: `^asset_[A-Za-z0-9_-]{16,240}$`. It is
 **not** single-use — UMS revalidates the same reference on patch replay and after a transient
 provider failure. It is never a URL, never contains a name, email, or subject, and UMS **never
 fetches the bytes**. UMS stores it as display data (`contracts/v1/schemas/profile-patch.json`).
@@ -100,18 +98,16 @@ Request: `{reference, appRegistrationId, appSubject}`. Response:
 | asset owned by another app/subject | drop the reference; never revoke |
 | revoke during patch | attach succeeds; later fact/read repairs it |
 
-## Open questions for the content owner
+## Decisions (accepted 2026-11-05)
 
-1. What is the exact reference format and length bound?
-2. Is a signed reference possible, or must UMS call the ownership check? (UMS recommends a signed
-   reference so no network sits in the profile path.)
-3. What is the cleanup-confirmation mechanism: callback, poll, or signed acknowledgement? Is
-   cleanup required for an explicit clear, or does the provider garbage-collect unreferenced
-   assets?
-4. After a reference is revoked, how long is UMS expected to keep the association before the
-   neutral avatar applies?
-5. Which provider states map to `UNAVAILABLE` versus `REVOKED`?
-6. Does the provider accept a keyed hash as the cleanup handle, or must UMS retain the reference?
+| # | Question | Decision |
+|---|---|---|
+| 1 | Exact reference format and length bound? | `^asset_[A-Za-z0-9_-]{16,240}$` — opaque, immutable, within the existing 256-character `avatarReference` bound. |
+| 2 | Signed reference, or must UMS call the ownership check? | **Signed reference** (HMAC over reference, `appRegistrationId`, `appSubject` and expiry), so no network sits in the profile transaction. The call remains a fallback for references minted before signing. |
+| 3 | Cleanup confirmation, and is cleanup required for an explicit clear? | **Signed acknowledgement callback, with polling as the fallback. Cleanup is required** — an unreferenced asset is not assumed collected. |
+| 4 | How long is the association kept after `REVOKED`? | **Cleared on the next validated read or content fact; no grace period.** `UNAVAILABLE` keeps the association indefinitely with the neutral avatar. |
+| 5 | Which provider states map to `UNAVAILABLE` versus `REVOKED`? | `REVOKED` — the owner states the reference is invalid. `UNAVAILABLE` — the provider cannot answer (timeout, 5xx, maintenance). An outage is never a revocation. |
+| 6 | Keyed hash as cleanup handle, or must UMS retain the reference? | **UMS retains the reference** in the obligation record. A keyed hash is accepted only as an optional secondary handle. |
 
 ## Acceptance (when agreed)
 

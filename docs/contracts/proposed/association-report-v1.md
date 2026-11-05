@@ -1,12 +1,10 @@
-# PROPOSED — not accepted
+# ACCEPTED — association correlation report v1 (UMS → Dutch)
 
-> This is a proposal for the Dutch owner to accept, amend, or reject. No UMS code may depend on
-> it until the Dutch owner accepts a version and both sides validate the same fixtures.
->
-> **Review status:** independently reviewed; the first draft was rejected for contradicting the
-> accepted Dutch mapping contract and for an incompatible envelope. This revision fixes that.
+Accepted 2026-11-05 by the Dutch owner. Decision record:
+`portfolio-planning/capabilities/work/decisions/2026-11-05-ums-contract-decisions.md`.
 
-# Association correlation report v1 (UMS → Dutch), proposal
+> UMS may now build against this version. Both sides validate the same fixtures before either
+> side claims the integration.
 
 ## What this is, and what it is not
 
@@ -155,16 +153,15 @@ send so both sides can agree the mapping, without UMS dictating it.
 | `ERASED` + `retiredGeneration` | irreversible; never associate this generation |
 | `contentObligation: true` | a cleanup confirmation is still owed; not full erasure |
 
-## Open questions for the Dutch owner
+## Decisions (accepted 2026-11-05)
 
-1. Is the correlation report needed at all, or does Dutch prefer an adapter over the existing UMS
-   event?
-2. Does Dutch accept the app subject as the stable `aggregate.id`, or does it require an id it
-   issues for the binding?
-3. Does Dutch accept the 7-day event horizon plus the pull-based resync, or does it require a
-   longer replay window?
-4. Which lifecycle states must Dutch receive, given it owns member retention?
-5. Who owns the shared schema location and its fixtures?
+| # | Question | Decision |
+|---|---|---|
+| 1 | Is the report needed, or is an adapter over the existing event enough? | **The report is needed.** The existing event carries UMS UUIDs Dutch cannot correlate to an `aps_` subject; an adapter would need the same key and move the work to Dutch. |
+| 2 | App subject as stable `aggregate.id`, or a Dutch-issued id? | **The app subject is the `aggregate.id`.** It is stable across generations, which the tombstone requires. Dutch maps to its own member locally. |
+| 3 | 7-day horizon plus pull resync, or a longer replay window? | **7 days, with visible unreconciled state.** The pull path stays gated on an IAM workload token and is not a prerequisite. Dutch holds unreconciled members visibly rather than assuming silence means active. |
+| 4 | Which lifecycle states must Dutch receive? | **All four** (`ACTIVE`, `CLOSED`, `DELETION_PENDING`, `ERASED`) plus `lifecycleReason`. Dutch owns retention and must see closure and deletion, not only readiness. |
+| 5 | Who owns the shared schema and fixtures? | **UMS owns the schema and fixtures; Dutch pins a read-only copy**, matching the IAM bundle pattern. Both sides validate them in CI. |
 
 Already decided on the UMS side and not open: `profileRevision` is a wire string while
 `schemaVersion` and `aggregate.version` are integers, `appRegistrationId` is the registered app
