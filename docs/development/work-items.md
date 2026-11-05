@@ -1,6 +1,6 @@
 # Work Items — UMS remaining implementation (Slices D–G)
 
-> **Coordination status (2026-11-05).** Status lines below mirror the central registry; the registry remains authoritative for execution state and leases. W-1–W-17 are integrated or implemented; W-11 is implemented pending review, and W-18 plus the IAM-dependent items wait on the runnable IAM runtime.
+> **Coordination status (2026-11-05).** Status lines below mirror the central registry; the registry remains authoritative for execution state and leases. W-1–W-17 are integrated; W-18 and the IAM-dependent items wait on the runnable IAM runtime.
 
 These work items continue the build sequence in the [implementation handoff](../ums-platform/issues/08-define-verification-and-implementation-handoff.md) after the already-verified Foundation and Slices A, B, and D1–D3. The scope boundary is recorded in [artifacts/scope-boundary.md](artifacts/scope-boundary.md). Work items are numbered `W-N` for cross-reference only. `Depends on` lines refer to other work items in this file.
 
@@ -334,7 +334,7 @@ Provider inputs that did not exist when these items were written are carried as 
 
 **Summary.** An avatar is currently just a stored reference, because no content provider has agreed how attachments are created, revoked, or cleaned up. Until that exists, a person cannot attach one and erasure cannot honestly claim the image is gone. This item closes that gap with the content owner.
 
-**Status.** Implemented — the attachment contract is accepted in
+**Status.** Integrated — the attachment contract is accepted in
 [content-attachment-v1.md](../contracts/proposed/content-attachment-v1.md) (2026-11-05).
 Attachment stays disabled unless a deployment configures a content authority, and remains
 gated on the contract fixtures both sides still have to validate.
