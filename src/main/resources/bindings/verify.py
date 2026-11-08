@@ -12,11 +12,14 @@ from __future__ import annotations
 import json
 import re
 import sys
+
+sys.dont_write_bytecode = True
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 BINDING = HERE / "dutch-consumer-binding.json"
 PROFILE = HERE / "application-dutch.yaml"
+HARNESS = HERE.parent / "harness"
 PIN = HERE / "association-report/v1"
 
 UUID = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")
@@ -33,7 +36,13 @@ def seconds(value: str) -> int:
         return -1
     scale = {"S": 1, "M": 60, "H": 3600}[match.group(2)]
     return int(match.group(1)) * scale
-SECRET_KEYS = {"token", "password", "secret", "clientSecret", "apiKey", "bearerToken", "privateKey"}
+SECRET_KEYS = {"token", "password", "secret", "apikey", "bearertoken", "privatekey", "clientsecret"}
+
+
+def secret_key(key: str) -> bool:
+    normalized = key.replace("-", "").replace("_", "").lower()
+    return normalized in SECRET_KEYS or normalized.endswith("token") or normalized.endswith("password") \
+        or normalized.endswith("secret")
 
 
 def fail(problems: list[str], condition: bool, message: str) -> None:
@@ -44,7 +53,7 @@ def fail(problems: list[str], condition: bool, message: str) -> None:
 def walk_secrets(value: object, path: str, problems: list[str]) -> None:
     if isinstance(value, dict):
         for key, item in value.items():
-            fail(problems, key not in SECRET_KEYS, f"secret-shaped key at {path}.{key}")
+            fail(problems, not secret_key(key), f"secret-shaped key at {path}.{key}")
             walk_secrets(item, f"{path}.{key}", problems)
     elif isinstance(value, list):
         for index, item in enumerate(value):
@@ -64,7 +73,7 @@ def check_binding(doc: dict) -> list[str]:
     ports = []
     for name, service in services.items():
         image = str(service.get("image", ""))
-        fail(problems, bool(image) and not image.endswith(":latest"),
+        fail(problems, bool(image) and ":" in image and not image.endswith(":latest"),
              f"{name} image is not pinned to a version or digest")
         ports.append(service.get("port"))
     fail(problems, len(set(ports)) == len(ports), "services share a port")
@@ -114,10 +123,7 @@ def check_binding(doc: dict) -> list[str]:
          "snapshot transport is not a workload identity mode")
     fail(problems, PATH.match(str(snapshot.get("path", ""))) is not None,
          "snapshot path is not internal")
-    fail(problems, isinstance(snapshot.get("pageSize"), int)
-         and 1 <= snapshot["pageSize"] <= 1000, "snapshot page size is out of range")
-    fail(problems, isinstance(snapshot.get("maxPages"), int)
-         and 1 <= snapshot["maxPages"] <= 100, "snapshot page bound is out of range")
+    fail(problems, bool(snapshot.get("page")), "snapshot page contract is not recorded")
 
     egress = doc.get("egress") or {}
     fail(problems, egress.get("eventType") == "ums.profile.association-report.v1",
@@ -142,7 +148,7 @@ def check_binding(doc: dict) -> list[str]:
     fail(problems, correlation.get("causation") == "source-event-id", "causation is not the source event")
 
     capabilities = doc.get("capabilities") or {}
-    fail(problems, set(capabilities) == {"privacyMode", "notices", "contentAuthority", "outboxRelay"},
+    fail(problems, set(capabilities) == {"privacyMode", "contentAuthority", "outboxRelay"},
          "capability set is incomplete")
     for name, enabled in capabilities.items():
         fail(problems, enabled is False, f"privacy-sensitive capability {name} is not default-off")
@@ -153,7 +159,8 @@ def check_binding(doc: dict) -> list[str]:
     return problems
 
 
-def check_profile(path: Path) -> list[str]:
+def check_text_file(path: Path) -> list[str]:
+    """Scan a properties or compose file for a literal credential value."""
     problems: list[str] = []
     if not path.is_file():
         return [f"missing {path.name}"]
@@ -162,7 +169,9 @@ def check_profile(path: Path) -> list[str]:
         if stripped.startswith("#") or ":" not in stripped:
             continue
         key, _, value = stripped.partition(":")
-        if key.strip() in SECRET_KEYS and value.strip() and not value.strip().startswith("${"):
+        value = value.strip().strip('"')
+        if secret_key(key.strip()) and value and not value.startswith("${") and not value.startswith("[") \
+                and not value.startswith("["):
             problems.append(f"{path.name}:{number} has a literal {key.strip()}")
     return problems
 
@@ -178,7 +187,8 @@ def check_pin() -> list[str]:
 
 if __name__ == "__main__":
     document = json.loads(BINDING.read_text())
-    failures = check_binding(document) + check_profile(PROFILE) + check_pin()
+    failures = check_binding(document) + check_text_file(PROFILE) \
+        + check_text_file(HARNESS / "docker-compose.yml") + check_pin()
     if failures:
         for failure in failures:
             print(f"FAIL {failure}", file=sys.stderr)

@@ -78,7 +78,7 @@ authenticated transport exists; the adapter is not an authentication mechanism.
 |---|---|
 | Transport | workload bearer from the `DEP-3` profile |
 | Path | reserved as `/internal/v1/iam/snapshot` |
-| Page | explicit subject, bounded page, explicit correlation |
+| Page | explicit subject, bounded page (the bound is DEP-3's contract), explicit correlation |
 | Outcomes | `NO_LOCAL_BINDING`, `NO_EVIDENCE`, `PAGE_INCOMPLETE`, `NO_CHANGE`, `CHECKPOINT_CONVERGED`, `RECONCILIATION_REQUIRED`, `REFUSED_ERASED`, `REFUSED_RESTRICTED`, `REJECTED` |
 | Danger | a snapshot never creates a profile and never restores an erased or restricted one |
 
@@ -91,7 +91,7 @@ workload profile UMS validates.
 |---|---|
 | Event | `ums.profile.association-report.v1`, schema version 1 |
 | Channel | transactional outbox → relay → HTTPS consumer |
-| Endpoint | `DUTCH_UMS_REPORT_URI`; no value means the relay stays off |
+| Endpoint | `DUTCH_UMS_REPORT_URI` → `ums.outbox.consumer-uri`; absent means the relay stays off |
 | Auth | deployment credential (`DUTCH_UMS_REPORT_TOKEN`) or workload identity |
 | Ordering | one head per application stream, at-least-once, dedupe by `eventId` |
 | Retry | 8 attempts, 30 s doubling to 1 h, 5 min lease by default |
@@ -100,14 +100,19 @@ workload profile UMS validates.
 | Content | lifecycle, readiness, generation/revision, `contentObligation`; never a name, email, token, or asset reference |
 
 `Application` and `stream` are the UMS app reference and binding, so a later revision can never
-overtake a failed head. The relay is disabled by default; enabling it without a consumer URI fails
+overtake a failed head. One cross-contract constraint is recorded rather than hidden: the runtime
+accepts a correlation of `^[A-Za-z0-9._:-]{1,128}$`, while the report schema also requires the first
+character to be alphanumeric. The emitter inherits the source correlation, so the ingress must not
+forward a leading `.` or `:` into a fact that can reach the report; tightening that is a follow-up
+outside this binding slice. The relay is disabled by default; enabling it without a consumer URI fails
 startup instead of accumulating retries. See [outbox relay](outbox-relay.md) for the full state
 machine.
 
 ## Published pin (W-8)
 
 Dutch consumes the report as a read-only pin. UMS publishes a versioned bundle with a manifest and
-hashes; the canonical files remain under `contracts/v1/`.
+hashes. The schema and `valid-live.json` are canonical under `contracts/v1/`; the tombstone and
+reject fixtures are derived for this pin from the published rules.
 
 | Artifact | Path |
 |---|---|
@@ -125,9 +130,10 @@ manifest hash. Run the read-only check from anywhere:
 python3 src/main/resources/bindings/association-report/v1/verify.py
 ```
 
-It checks the manifest hashes, proves the published schema is byte-identical to the canonical
-schema, and asserts each fixture is accepted or rejected for the stated reason. Dutch can run the
-same file against its copy.
+It checks every manifest hash and size, asserts each fixture is accepted or rejected for the stated
+reason, and — when run inside the UMS repository — proves the published schema is byte-identical to
+the canonical one. Dutch can run the same file against its own copy; it then verifies the pinned
+bytes without needing the UMS tree.
 
 ## Default-off capabilities and the erasure journal
 
@@ -137,7 +143,6 @@ The shipped profile keeps privacy-sensitive capabilities off until a deployment 
 |---|---|---|
 | Outbox relay / Dutch egress | off | `ums.outbox.relay.enabled` |
 | Content authority / avatars | off | `ums.content.authority-uri` |
-| Notices | off unless the notice owner is configured | notice configuration |
 | Privacy mode / erasure journal | off | `ums.recovery.erasure-journal-path` |
 | Retention sweep and maintenance | deployment choice | `UMS_RETENTION_SWEEP_ENABLED`, `UMS_MAINTENANCE_ENABLED` |
 

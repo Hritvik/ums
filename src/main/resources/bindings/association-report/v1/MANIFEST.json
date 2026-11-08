@@ -4,7 +4,6 @@
   "consumer": "dutch",
   "producer": "ums",
   "schema": "association-report.schema.json",
-  "sourceCommit": "c17395a2b5e7",
   "canonical": {
     "schema": "contracts/v1/schemas/association-report.json",
     "fixtures": "contracts/v1/fixtures/"
@@ -74,5 +73,12 @@
       "sha256": "e8f0da08ecabf1c6bf02803335a75e87ff9cd9076bfac45b3d1fcb501541084b",
       "bytes": 672
     }
-  ]
+  ],
+  "provenance": {
+    "schemaCommit": "05551f7",
+    "schemaSource": "contracts/v1/schemas/association-report.json",
+    "fixturesSource": "contracts/v1/fixtures/",
+    "publishedAt": "2026-11-08",
+    "note": "valid-live.json and the schema are canonical; the tombstone and reject fixtures are derived for this pin from the published rules"
+  }
 }

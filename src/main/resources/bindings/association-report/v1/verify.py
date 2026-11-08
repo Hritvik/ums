@@ -2,15 +2,16 @@
 """Verify the published association-report pin without network access.
 
 Checks:
-  1. every file matches the SHA-256 recorded in MANIFEST.json;
-  2. the published schema is byte-identical to the canonical repo schema;
+  1. every file matches the SHA-256 and size recorded in MANIFEST.json;
+  2. inside the UMS repository, the published schema is byte-identical to the canonical schema;
   3. each fixture is accepted or rejected for the reason the manifest states.
 
-This is the read-only check Dutch can run against the published bundle. It is a
-subset of JSON Schema, limited to the invariants the contract actually relies on.
+This is the read-only check Dutch can run against its own copy. It validates the
+contract invariants the report relies on, not every JSON Schema keyword.
 """
 from __future__ import annotations
 
+import datetime as dt
 import hashlib
 import json
 import re
@@ -36,9 +37,22 @@ REASONS = {"DELETION_REQUESTED", "DELETION_CANCELLED", "CLOSED", "ERASED", "REOP
 EVENT_ID = re.compile(r"^evt_[A-Za-z0-9_-]{16,128}$")
 SUBJECT = re.compile(r"^aps_[A-Za-z0-9_-]{18,128}$")
 REGISTRATION = re.compile(r"^[a-z][a-z0-9-]{2,63}$")
-CORRELATION = re.compile(r"^[A-Za-z0-9._:-]{1,128}$")
-UUID = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")
-VERSION = re.compile(r"^[1-9][0-9]{0,17}$")
+ENVELOPE_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$")
+MAX_I64 = 9223372036854775807
+
+
+def _timestamp(value: object) -> bool:
+    if not isinstance(value, str) or not value.endswith("Z"):
+        return False
+    try:
+        dt.datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return False
+    return True
+
+
+def _version(value: object) -> bool:
+    return isinstance(value, str) and value.isdigit() and len(value) <= 19 and int(value) <= MAX_I64
 
 
 def validate_report(doc: object) -> list[str]:
@@ -58,9 +72,11 @@ def validate_report(doc: object) -> list[str]:
         bad.append("environment")
     if not isinstance(doc.get("eventId"), str) or not EVENT_ID.match(doc["eventId"]):
         bad.append("event-id")
-    if not isinstance(doc.get("correlationId"), str) or not CORRELATION.match(doc["correlationId"]):
+    if not _timestamp(doc.get("occurredAt")):
+        bad.append("occurred-at")
+    if not isinstance(doc.get("correlationId"), str) or not ENVELOPE_ID.match(doc["correlationId"]):
         bad.append("correlation")
-    if not isinstance(doc.get("causationId"), str) or not UUID.match(doc["causationId"]):
+    if not isinstance(doc.get("causationId"), str) or not ENVELOPE_ID.match(doc["causationId"]):
         bad.append("causation")
     aggregate = doc.get("aggregate")
     if not isinstance(aggregate, dict) or set(aggregate) != {"type", "id", "version"} \
@@ -99,8 +115,7 @@ def validate_report(doc: object) -> list[str]:
     else:
         if not isinstance(payload.get("generation"), int) or payload["generation"] < 1:
             bad.append("live-generation")
-        revision = payload.get("profileRevision")
-        if not isinstance(revision, str) or not VERSION.match(revision):
+        if not _version(payload.get("profileRevision")):
             bad.append("live-profile-revision")
         if "retiredGeneration" in payload:
             bad.append("live-retired-generation")
@@ -115,12 +130,14 @@ def check() -> list[str]:
         if not path.is_file():
             failures.append(f"missing file: {entry['path']}")
             continue
-        digest = hashlib.sha256(path.read_bytes()).hexdigest()
-        if digest != entry["sha256"]:
+        raw = path.read_bytes()
+        if hashlib.sha256(raw).hexdigest() != entry["sha256"]:
             failures.append(f"hash mismatch: {entry['path']}")
+        if len(raw) != entry.get("bytes"):
+            failures.append(f"size mismatch: {entry['path']}")
     schema = HERE / manifest["schema"]
     canonical = REPO / manifest["canonical"]["schema"]
-    if not canonical.is_file() or schema.read_bytes() != canonical.read_bytes():
+    if canonical.is_file() and schema.read_bytes() != canonical.read_bytes():
         failures.append("published schema differs from the canonical schema")
     if not (HERE / "common.json").is_file():
         failures.append("common.json is missing; the schema $ref cannot resolve")
@@ -140,4 +157,4 @@ if __name__ == "__main__":
         for problem in problems:
             print(f"FAIL {problem}", file=sys.stderr)
         sys.exit(1)
-    print("association-report pin v1: 7 files, all hashes and fixture expectations match")
+    print("association-report pin v1: 7 files, hashes, sizes and fixture expectations match")

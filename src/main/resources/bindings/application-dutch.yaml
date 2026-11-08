@@ -26,10 +26,11 @@ ums:
   content:
     authority-uri: ${UMS_CONTENT_AUTHORITY_URI:}
   outbox:
+    # The transport reads these two at the root, not under relay.
+    consumer-uri: ${DUTCH_UMS_REPORT_URI}
+    consumer-token: ${DUTCH_UMS_REPORT_TOKEN:}
     relay:
       enabled: ${UMS_OUTBOX_RELAY_ENABLED:false}
-      consumer-uri: ${DUTCH_UMS_REPORT_URI:}
-      consumer-token: ${DUTCH_UMS_REPORT_TOKEN:}
       max-attempts: ${UMS_OUTBOX_MAX_ATTEMPTS:8}
       backoff-base: ${UMS_OUTBOX_BACKOFF_BASE:PT30S}
       backoff-max: ${UMS_OUTBOX_BACKOFF_MAX:PT1H}

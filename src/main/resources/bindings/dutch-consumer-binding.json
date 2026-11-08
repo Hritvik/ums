@@ -39,7 +39,7 @@
   "trust": {
     "issuer": "https://iam.example.test",
     "jwkSetUri": "https://iam.example.test/.well-known/jwks.json",
-    "audience": "ums-api",
+    "audience": "https://ums.example.test",
     "issuerEnvironmentRef": "11111111-1111-1111-1111-111111111111",
     "callerRegistrations": "UMS_CALLER_REGISTRATIONS"
   },
@@ -60,8 +60,7 @@
   "snapshotRepair": {
     "transport": "workload-bearer",
     "path": "/internal/v1/iam/snapshot",
-    "pageSize": 100,
-    "maxPages": 10
+    "page": "explicit subject; DEP-3 owns the page bound"
   },
   "egress": {
     "eventType": "ums.profile.association-report.v1",
@@ -82,7 +81,6 @@
   },
   "capabilities": {
     "privacyMode": false,
-    "notices": false,
     "contentAuthority": false,
     "outboxRelay": false
   },
