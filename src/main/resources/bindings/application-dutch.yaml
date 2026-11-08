@@ -1,0 +1,40 @@
+# Dutch consumer journey binding (profile `dutch`).
+#
+# Secret-free by design: every credential is an environment reference, never a value. The harness
+# mounts this directory and starts UMS with `--spring.profiles.active=dutch`; a real deployment
+# supplies the same names from its secret store. Removing a required reference fails startup rather
+# than falling back to a guess. See docs/development/dutch-consumer-journey.md.
+ums:
+  environment: ${UMS_ENVIRONMENT}
+  iam:
+    issuer-environment-ref: ${UMS_IAM_ISSUER_ENVIRONMENT_REF}
+  security:
+    issuer: ${UMS_IAM_ISSUER}
+    jwk-set-uri: ${UMS_IAM_JWK_SET_URI}
+    audience: ${UMS_RESOURCE_AUDIENCE}
+    # JSON array of reviewed caller registrations; a name here, the value comes from the deployment.
+    registrations: ${UMS_CALLER_REGISTRATIONS}
+  profile:
+    locale-version: ${UMS_PROFILE_LOCALE_VERSION}
+    timezone-version: ${UMS_PROFILE_TIMEZONE_VERSION}
+    locales: ${UMS_PROFILE_LOCALES}
+    timezones: ${UMS_PROFILE_TIMEZONES}
+    receipt-key: ${UMS_PROFILE_RECEIPT_KEY}
+    privacy:
+      max-strong-age-seconds: ${UMS_PROFILE_PRIVACY_MAX_STRONG_AGE_SECONDS:86400}
+  # Privacy-sensitive capabilities are off unless the deployment turns them on deliberately.
+  content:
+    authority-uri: ${UMS_CONTENT_AUTHORITY_URI:}
+  outbox:
+    relay:
+      enabled: ${UMS_OUTBOX_RELAY_ENABLED:false}
+      consumer-uri: ${DUTCH_UMS_REPORT_URI:}
+      consumer-token: ${DUTCH_UMS_REPORT_TOKEN:}
+      max-attempts: ${UMS_OUTBOX_MAX_ATTEMPTS:8}
+      backoff-base: ${UMS_OUTBOX_BACKOFF_BASE:PT30S}
+      backoff-max: ${UMS_OUTBOX_BACKOFF_MAX:PT1H}
+      lease: ${UMS_OUTBOX_LEASE:PT5M}
+      batch-size: ${UMS_OUTBOX_BATCH_SIZE:20}
+# The erasure journal is the deployed evidence that an erasure survives a restore. A privacy-mode
+# deployment sets UMS_RECOVERY_ERASURE_JOURNAL_PATH to durable storage; it is deliberately absent
+# here, because Spring binds an empty value as a configured path and the journal would fail.

@@ -1,0 +1,88 @@
+# Synthetic Dutch consumer topology.
+#
+# Two services, two durable stores, no shared database and no secret values:
+#   ums         the real boot jar, migrated against its own PostgreSQL
+#   dutch-stub  a separate consumer with its own SQLite store
+#
+# The peers are stubs because IAM DEP-2/DEP-3 supply the authenticated transport
+# and workload profile. Everything here is synthetic and disposable.
+services:
+  ums-db:
+    image: postgres:17.6-alpine
+    environment:
+      POSTGRES_DB: ums
+      POSTGRES_USER: ums
+      POSTGRES_PASSWORD: ums-harness-only
+    volumes:
+      - ums-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ums -d ums"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  dutch-stub:
+    image: python:3.12-alpine
+    command: ["python", "/app/dutch_stub.py"]
+    environment:
+      DUTCH_DB: /data/dutch-stub.sqlite
+      PORT: "8082"
+    volumes:
+      - ./dutch_stub.py:/app/dutch_stub.py:ro
+      - dutch-data:/data
+    ports:
+      - "18082:8082"
+
+  ums:
+    image: eclipse-temurin:21-jre
+    depends_on:
+      ums-db:
+        condition: service_healthy
+    command: ["java", "-jar", "/app/ums.jar"]
+    environment:
+      SPRING_PROFILES_ACTIVE: dutch
+      SPRING_CONFIG_ADDITIONAL_LOCATION: file:/app/bindings/
+      SERVER_PORT: "8080"
+      SPRING_DATASOURCE_URL: jdbc:postgresql://ums-db:5432/ums
+      SPRING_DATASOURCE_USERNAME: ums
+      SPRING_DATASOURCE_PASSWORD: ums-harness-only
+      UMS_ENVIRONMENT: development
+      UMS_IAM_ISSUER: https://iam.example.test
+      UMS_IAM_JWK_SET_URI: https://iam.example.test/.well-known/jwks.json
+      UMS_RESOURCE_AUDIENCE: https://ums.example.test
+      UMS_IAM_ISSUER_ENVIRONMENT_REF: 11111111-1111-1111-1111-111111111111
+      UMS_CALLER_REGISTRATIONS: >-
+        [{"appId":"dutch-development","clientId":"dutch-development-web",
+        "audience":"https://ums.example.test","allowedScopes":["profile:read","profile:write"],
+        "requiresDpop":true}]
+      UMS_PROFILE_LOCALE_VERSION: l1
+      UMS_PROFILE_TIMEZONE_VERSION: t1
+      UMS_PROFILE_LOCALES: en
+      UMS_PROFILE_TIMEZONES: UTC
+      # Synthetic 32-byte bas64 key, harness only. A deployment supplies its own.
+      UMS_PROFILE_RECEIPT_KEY: MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=
+      UMS_PROFILE_PRIVACY_MAX_STRONG_AGE_SECONDS: "86400"
+      # Safe defaults: relay, content authority and privacy mode stay off.
+      UMS_OUTBOX_RELAY_ENABLED: "false"
+      UMS_CONTENT_AUTHORITY_URI: ""
+      UMS_MAINTENANCE_ENABLED: "false"
+      UMS_RETENTION_SWEEP_ENABLED: "false"
+    volumes:
+      - ${UMS_JAR:?set UMS_JAR to the bootJar path}:/app/ums.jar:ro
+      - ../bindings:/app/bindings:ro
+    ports:
+      - "18080:8080"
+
+  iam-stub:
+    image: python:3.12-alpine
+    command: ["python", "/app/iam_stub.py"]
+    environment:
+      PORT: "8081"
+    volumes:
+      - ./iam_stub.py:/app/iam_stub.py:ro
+    ports:
+      - "18081:8081"
+
+volumes:
+  ums-db-data:
+  dutch-data:

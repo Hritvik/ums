@@ -1,0 +1,78 @@
+{
+  "apiVersion": "ums.vik/association-report-pin-v1",
+  "version": "v1",
+  "consumer": "dutch",
+  "producer": "ums",
+  "schema": "association-report.schema.json",
+  "sourceCommit": "c17395a2b5e7",
+  "canonical": {
+    "schema": "contracts/v1/schemas/association-report.json",
+    "fixtures": "contracts/v1/fixtures/"
+  },
+  "compatibility": "additive only; a consumer pins the version and rejects unknown properties",
+  "fixtures": [
+    {
+      "path": "fixtures/valid-live.json",
+      "expect": "valid"
+    },
+    {
+      "path": "fixtures/valid-tombstone.json",
+      "expect": "valid"
+    },
+    {
+      "path": "fixtures/invalid-extra-payload-property.json",
+      "expect": "reject",
+      "reason": "payload has a display field (displayName)",
+      "rule": "payload-closed"
+    },
+    {
+      "path": "fixtures/invalid-environment.json",
+      "expect": "reject",
+      "reason": "environment is not one of development|test|staging|production",
+      "rule": "environment"
+    },
+    {
+      "path": "fixtures/invalid-tombstone-live-fields.json",
+      "expect": "reject",
+      "reason": "ERASED payload also carries live generation/profileRevision fields",
+      "rule": "tombstone-live-fields"
+    }
+  ],
+  "files": [
+    {
+      "path": "association-report.schema.json",
+      "sha256": "8734706d103fa1996477bb8da7f22486b440e4f88af5a8c621a5f3c9459b2e03",
+      "bytes": 4007
+    },
+    {
+      "path": "common.json",
+      "sha256": "97800a04dd6c31b104ad88ecad5d8b10fcd1e331484ac565d06c17a180fa8f29",
+      "bytes": 2652
+    },
+    {
+      "path": "fixtures/invalid-environment.json",
+      "sha256": "3eb1ce4bf58683dfbcc8e8d6c7c32a821eebddfba039a48ddea2c438a24bf4a3",
+      "bytes": 691
+    },
+    {
+      "path": "fixtures/invalid-extra-payload-property.json",
+      "sha256": "b9547806c282884e1baa3d83bc11d3e0c9fdcdbb080e767d3c99c6bcfb65f77a",
+      "bytes": 716
+    },
+    {
+      "path": "fixtures/invalid-tombstone-live-fields.json",
+      "sha256": "6240019129107e7e06e6170efda920c03253f914d178669ded914c7fc9dafac4",
+      "bytes": 721
+    },
+    {
+      "path": "fixtures/valid-live.json",
+      "sha256": "797e94ffff770c371602cf12084ce8689bb9f9b86fd4a1b7a75dd71e77c0ed05",
+      "bytes": 690
+    },
+    {
+      "path": "fixtures/valid-tombstone.json",
+      "sha256": "e8f0da08ecabf1c6bf02803335a75e87ff9cd9076bfac45b3d1fcb501541084b",
+      "bytes": 672
+    }
+  ]
+}

@@ -1,79 +1,174 @@
-# Local Dutch consumer journey
+# Dutch consumer journey — UMS provider bindings (v1)
 
-This is a UMS-owned integration harness using a test-only product consumer.
-It is not Dutch implementation, owner acceptance, transport verification, or
-a real login-to-Ledger end-to-end journey. Dutch's working tree is unchanged.
-The production gate remains the [Slice C integration boundary](iam-integration.md).
+The bindings UMS needs to take part in the real Dutch journey without inventing IAM or Dutch
+behaviour. Everything here is secret-free and synthetic; live credentials belong to the deployment.
+The executable companion is the [synthetic harness](../../src/main/resources/harness/README.md);
+the published wire artifact is the [association report pin](../../src/main/resources/bindings/association-report/v1/MANIFEST.json).
 
-## Intended observable journey
+Status 2026-11-08: UMS is ready to be configured for the journey. IAM ingress authentication
+(`iam/DEP-2`), the workload profile and snapshot authentication (`iam/DEP-3`), and the Dutch side
+(`dutch/PROFILE-BINDING`) are still external. `ums/W-18` joins them and is the only UMS task left.
 
-1. An adopted application's trusted IAM onboarding event enters the real UMS
-   adapter and provisioning service. Before delivery, status remains pending;
-   reading status does not provision a profile.
-2. PostgreSQL commits one app-isolated binding and its canonical state outbox
-   event. A strict policy can leave the profile incomplete without invalidating
-   the user's IAM session.
-3. A simulated same-app product consumes the actual persisted event. Its own
-   Member association and domain permission remain outside UMS authority.
-4. The user edits permitted fields through the real internal editing service.
-   Readiness advances with one profile/binding revision and one outbox fact.
-   The product reads permitted display fields through the protected application
-   seam, rather than copying personal fields from events.
-5. Duplicate/stale delivery cannot create another association or regress state.
-   A revision gap requires repair and cannot establish fresh readiness. Foreign
-   application facts cannot enter the product projection.
-6. A ready profile satisfies only the profile prerequisite. A separate
-   Dutch-owned domain permission is still required for a Ledger action.
+## Ownership
 
-Authority objects used by these tests are explicitly trusted local seams. They
-do not demonstrate IAM token validation, sender constraints, delegated workload
-authority, current security-version validation, or network authorization.
+| Responsibility | Owner |
+|---|---|
+| Issuer, JWKS, audience, caller registrations, token profiles | IAM |
+| Authenticated IAM ingress and snapshot transport | IAM (`DEP-2`, `DEP-3`) |
+| Profile state, lifecycle, erasure, association report content | UMS |
+| Member mapping, Ledger permissions, `/me` translation, mobile UI | Dutch |
+| Process configuration, stores and delivery bindings on the UMS side | UMS (this document) |
 
-## Real consumer handoff
+UMS never reads IAM persistence, never becomes the Dutch Member service, and never treats profile
+readiness as a Ledger grant.
 
-| Responsibility | Required implementation or decision | Current boundary |
-| --- | --- | --- |
-| IAM | Running activation/onboarding producer and authenticated delivery | Contracts and local adapter tests exist; producer flow remains absent |
-| UMS | Production caller validation, scoped status/display routes, relay and repair | Application seams exist; business HTTP routes remain denied |
-| Dutch | App-subject/profile-to-Member association and its published mapping event | Owned by Dutch; no shared-UMS Member service is introduced |
-| Dutch | Profile-required UI, retry behavior, permitted display retrieval | Simulated locally; actual Gateway/mobile integration remains absent |
-| Dutch | Ledger membership/role checks independent of profile readiness | Test-only policy separation; real domain acceptance remains outstanding |
-| Both consumers/providers | Delay/outage/replay/gap and wrong-authority evidence against real services | Local harness evidence cannot mark this gate accepted |
+## Topology
 
-No provider commitment or consumer expectation changes solely because this
-harness passes. The central portfolio capability record retains ownership of
-those acceptance decisions.
+| Component | Version | Store | Notes |
+|---|---|---|---|
+| UMS | local boot jar / release tag | PostgreSQL 17.6, database `ums`, migrations 25 | real application |
+| IAM producer | `iam/DEP-2` release | IAM-owned | authenticated onboarding delivery |
+| IAM snapshot | `iam/DEP-3` release | IAM-owned | workload profile and repair endpoint |
+| Dutch consumer | `dutch/PROFILE-BINDING` release | Dutch-owned | separate consumer and store |
+| Harness stubs | `python:3.12-alpine` | UMS: PostgreSQL; Dutch stub: own SQLite | synthetic peers only |
 
-## Harness limits
+No store is shared between products. The binding manifest records the versions so a topology
+change is visible:
+[`dutch-consumer-binding.json`](../../src/main/resources/bindings/dutch-consumer-binding.json).
 
-The simulated consumer is in-memory and handles one binding. It is a test
-fixture for observable integration behavior, not a reusable SDK or durable Dutch
-inbox. Its explicit Ledger grant is a test stand-in for Dutch's real domain
-authorization. A simulated denial proves the two concepts are separable; it
-does not prove Dutch's production permission checks.
+## Environment trust and app scope
 
-A missing message is represented by withholding delivery, and a UMS failure by
-an injected PostgreSQL outbox constraint failure. The harness does not stop a
-live service, verify broker retries, simulate network partitions, or preserve
-real IAM sessions. Gap recovery uses missing-event delivery followed by an
-explicit retry; no authenticated snapshot implementation is implied.
+UMS accepts an app-scoped identity, not a global one. The values below are supplied by the
+deployment; none has a production default.
 
-## Recorded verification
+| Property | Source | Constraint |
+|---|---|---|
+| `ums.environment` | `UMS_ENVIRONMENT` | `development`, `test`, `staging`, or `production` |
+| `ums.security.issuer` | `UMS_IAM_ISSUER` | HTTPS, no credentials or fragment |
+| `ums.security.jwk-set-uri` | `UMS_IAM_JWK_SET_URI` | HTTPS |
+| `ums.security.audience` | `UMS_RESOURCE_AUDIENCE` | must equal the registration audience |
+| `ums.security.registrations` | `UMS_CALLER_REGISTRATIONS` | JSON array, reviewed, no wildcard |
+| `ums.iam.issuer-environment-ref` | `UMS_IAM_ISSUER_ENVIRONMENT_REF` | UUID of the trusted IAM environment |
+| profile catalogs and receipt key | `UMS_PROFILE_*` | versioned catalogs; key ≥ 32 bytes |
 
-On 24 October 2026, `./gradlew clean check bootJar --no-daemon --console=plain`
-passed using the JDK 21 and Colima settings in [foundation](foundation.md):
-69 JVM tests, zero failures/errors/skips, six contract-suite tests, and seven
-producer/input checks. JaCoCo reported 99.41% line and 90.84% branch coverage.
+The registration binds one `appId`, one `clientId`, one HTTPS audience, an explicit scope set, and
+whether DPoP is required. The Dutch development registration is `dutch-development` /
+`dutch-development-web`; it is a reviewed value, not an inference from a token.
 
-Five PostgreSQL journey tests exercise the real IAM adapter and UMS application
-services with actual persisted outbox JSON. Generated event, status, and display
-artifacts are schema-validated and cross-checked for the same profile reference,
-revision, readiness, and state. Protected projection reads enforce an explicit
-field allowlist and return unavailable for a foreign application.
+## Ingress binding (IAM → UMS)
 
-RED evidence includes the initially missing test-support consumer, missing
-journey artifacts, and a runnable first-gap subject-contamination regression.
-The simulator now pins its single subject before recording gap or revision
-state. Final read-only review found no remaining material finding within this
-local harness scope. No production code or upstream repository changed in this
-step.
+| Element | Binding |
+|---|---|
+| Event | `iam.app-subject.onboarding-ready.v1` only |
+| Producer identity | `iam`; the transport attributes it, the body never does |
+| Transport | workload mTLS (`DEP-2`); workload bearer is the documented fallback |
+| Path | reserved as `/internal/v1/iam/events`; the route is not exposed until `DEP-2` lands |
+| Body bound | 32 KiB, strict encoding, no trailing bytes |
+| Correlation | `^[A-Za-z0-9._:-]{1,128}$`, taken from the authenticated request |
+| Bad payload | quarantined with a safe class and digest; never retried forever |
+| Gap or stale order | `RECONCILIATION_REQUIRED`, never a new profile |
+
+UMS already owns the ingestion service, strict parser, application mapping, quarantine and
+reconciliation outcomes. The HTTP seam stays closed (`anyRequest().denyAll()`) until the
+authenticated transport exists; the adapter is not an authentication mechanism.
+
+## Snapshot repair binding
+
+| Element | Binding |
+|---|---|
+| Transport | workload bearer from the `DEP-3` profile |
+| Path | reserved as `/internal/v1/iam/snapshot` |
+| Page | explicit subject, bounded page, explicit correlation |
+| Outcomes | `NO_LOCAL_BINDING`, `NO_EVIDENCE`, `PAGE_INCOMPLETE`, `NO_CHANGE`, `CHECKPOINT_CONVERGED`, `RECONCILIATION_REQUIRED`, `REFUSED_ERASED`, `REFUSED_RESTRICTED`, `REJECTED` |
+| Danger | a snapshot never creates a profile and never restores an erased or restricted one |
+
+The repair service exists and is tested; the route waits for `DEP-3`, which also publishes the
+workload profile UMS validates.
+
+## Egress binding (UMS → Dutch)
+
+| Element | Binding |
+|---|---|
+| Event | `ums.profile.association-report.v1`, schema version 1 |
+| Channel | transactional outbox → relay → HTTPS consumer |
+| Endpoint | `DUTCH_UMS_REPORT_URI`; no value means the relay stays off |
+| Auth | deployment credential (`DUTCH_UMS_REPORT_TOKEN`) or workload identity |
+| Ordering | one head per application stream, at-least-once, dedupe by `eventId` |
+| Retry | 8 attempts, 30 s doubling to 1 h, 5 min lease by default |
+| Failure | `TRANSPORT_UNAVAILABLE`/`TRANSPORT_REJECTED` visible and repairable; the head holds its stream |
+| Correlation | forwarded from the source fact; causation is the source event id |
+| Content | lifecycle, readiness, generation/revision, `contentObligation`; never a name, email, token, or asset reference |
+
+`Application` and `stream` are the UMS app reference and binding, so a later revision can never
+overtake a failed head. The relay is disabled by default; enabling it without a consumer URI fails
+startup instead of accumulating retries. See [outbox relay](outbox-relay.md) for the full state
+machine.
+
+## Published pin (W-8)
+
+Dutch consumes the report as a read-only pin. UMS publishes a versioned bundle with a manifest and
+hashes; the canonical files remain under `contracts/v1/`.
+
+| Artifact | Path |
+|---|---|
+| Schema | [`association-report/v1/association-report.schema.json`](../../src/main/resources/bindings/association-report/v1/association-report.schema.json) |
+| Shared definitions | [`association-report/v1/common.json`](../../src/main/resources/bindings/association-report/v1/common.json) |
+| Manifest | [`association-report/v1/MANIFEST.json`](../../src/main/resources/bindings/association-report/v1/MANIFEST.json) |
+| Valid live fixture | `fixtures/valid-live.json` |
+| Valid tombstone | `fixtures/valid-tombstone.json` |
+| Rejected fixtures | extra payload property, unknown environment, tombstone with live fields |
+
+Compatibility is additive only within v1; a consumer rejects unknown properties and pins the
+manifest hash. Run the read-only check from anywhere:
+
+```bash
+python3 src/main/resources/bindings/association-report/v1/verify.py
+```
+
+It checks the manifest hashes, proves the published schema is byte-identical to the canonical
+schema, and asserts each fixture is accepted or rejected for the stated reason. Dutch can run the
+same file against its copy.
+
+## Default-off capabilities and the erasure journal
+
+The shipped profile keeps privacy-sensitive capabilities off until a deployment turns them on:
+
+| Capability | Default | Property |
+|---|---|---|
+| Outbox relay / Dutch egress | off | `ums.outbox.relay.enabled` |
+| Content authority / avatars | off | `ums.content.authority-uri` |
+| Notices | off unless the notice owner is configured | notice configuration |
+| Privacy mode / erasure journal | off | `ums.recovery.erasure-journal-path` |
+| Retention sweep and maintenance | deployment choice | `UMS_RETENTION_SWEEP_ENABLED`, `UMS_MAINTENANCE_ENABLED` |
+
+The erasure journal is the deployed evidence that an erasure survives a restore. A privacy-mode
+deployment must set `UMS_RECOVERY_ERASURE_JOURNAL_PATH` to durable storage, run
+[the restore drill](restore-drill.md) with reconciled counts, and keep the journal outside the
+database backup. The harness deliberately leaves it off: it must not report a privacy posture it
+did not exercise. `allow-missing-evidence` stays false.
+
+## Synthetic harness
+
+[`src/main/resources/harness`](../../src/main/resources/harness/README.md) stands up UMS, its own
+PostgreSQL, a separate Dutch consumer with its own SQLite store, and a producer stub. `./smoke.sh`
+verifies the binding and pin, starts the topology, checks health, the `401` on the anonymous
+surface, the default-off flags, migration 25, an empty Dutch store while egress is off, and that
+enabling egress without a consumer URI fails startup.
+
+It does not prove IAM authentication, a real Dutch consumer, the mobile client, or privacy
+acceptance. Those stay with `DEP-2`, `DEP-3`, `dutch/PROFILE-BINDING`, and `dutch/S7`.
+
+## Handoff and remaining gates
+
+| Gate | Needs |
+|---|---|
+| `iam/DEP-2` | authenticated onboarding delivery to the reserved ingress path |
+| `iam/DEP-3` | workload profile and snapshot authentication |
+| `dutch/PROFILE-BINDING` | Dutch consumes the pin and preserves `/me` through replay |
+| `ums/W-18` | joins the bindings and runs the journey against the real runtime |
+| `iam/W-13` → `dutch/S7` | delivery faults and the controlled launch |
+
+The local in-memory journey tests (`LocalConsumerJourneyTest`, `SimulatedDutchConsumer`) remain
+useful regression evidence for event shape and authorization separation, but they are not the
+real journey and never were. Their earlier record: 69 JVM tests, six contract-suite tests, seven
+producer checks, 99.41% line / 90.84% branch at the time.
