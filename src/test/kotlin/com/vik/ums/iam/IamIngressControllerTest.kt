@@ -34,11 +34,11 @@ class IamIngressControllerTest {
         }
     }, WorkloadReplayCache(Clock.fixed(now, ZoneOffset.UTC)), maxBytes)
 
-    private fun jwt(overrides: (MutableMap<String, Any>) -> Unit = {}): Jwt {
+    private fun jwt(jti: String = "0123456789abcdef", overrides: (MutableMap<String, Any>) -> Unit = {}): Jwt {
         val claims = mutableMapOf<String, Any>(
             "iss" to issuer, "sub" to workload, "aud" to audience,
             "iat" to now.epochSecond, "exp" to now.plusSeconds(300).epochSecond,
-            "jti" to "0123456789abcdef", "client_id" to "iam-relay",
+            "jti" to jti, "client_id" to "iam-relay",
             "token_profile" to "workload_access", "token_version" to 1,
             "subject_kind" to "workload", "scope" to "ums:onboarding:write",
             "app_id" to "dutch-development", "security_version" to 1,
@@ -77,8 +77,10 @@ class IamIngressControllerTest {
             MockHttpServletResponse(), idempotency).statusCode.value()).isEqualTo(202)
         assertThat(controller(IngestionOutcome.STALE).ingest(jwt(), request(),
             MockHttpServletResponse(), idempotency).statusCode.value()).isEqualTo(202)
-        assertThat(controller(IngestionOutcome.QUARANTINED).ingest(jwt(), request(),
-            MockHttpServletResponse(), idempotency).statusCode.value()).isEqualTo(422)
+        val quarantined = controller(IngestionOutcome.QUARANTINED).ingest(jwt(), request(),
+            MockHttpServletResponse(), idempotency)
+        assertThat(quarantined.statusCode.value()).isEqualTo(422)
+        assertThat(quarantined.body?.get("quarantineReference")).isNotNull()
         assertThat(controller(IngestionOutcome.RECONCILIATION_REQUIRED).ingest(jwt(), request(),
             MockHttpServletResponse(), idempotency).statusCode.value()).isEqualTo(409)
         assertThat(controller(IngestionOutcome.RESTRICTED).ingest(jwt(), request(),
@@ -103,18 +105,20 @@ class IamIngressControllerTest {
         assertThat(seen).isEmpty()
     }
 
-    @Test fun `a token used for a different event is a replay, a retried event is not`() {
+    @Test fun `a token is single-use, while a fresh token may retry the same event`() {
         val controller = controller(outcome = IngestionOutcome.DUPLICATE)
-        assertThat(controller.ingest(jwt(), request(), MockHttpServletResponse(), idempotency).statusCode.value())
-            .isEqualTo(202)
-        // The lost-response retry uses the same token and the same event id.
-        assertThat(controller.ingest(jwt(), request(), MockHttpServletResponse(), idempotency).statusCode.value())
-            .isEqualTo(202)
-        // The same token reused for a different event is a replay.
+        assertThat(controller.ingest(jwt("jti-a-0123456789abcdef"), request(),
+            MockHttpServletResponse(), idempotency).statusCode.value()).isEqualTo(202)
+        // Replaying the same token is rejected even for the same event.
+        assertThat(controller.ingest(jwt("jti-a-0123456789abcdef"), request(),
+            MockHttpServletResponse(), idempotency).statusCode.value()).isEqualTo(409)
+        // IAM mints a fresh token per delivery attempt; the event id is the retry key.
+        assertThat(controller.ingest(jwt("jti-b-0123456789abcdef"), request(),
+            MockHttpServletResponse(), idempotency).statusCode.value()).isEqualTo(202)
         val other = "evt_0123456789abcdef99"
-        assertThat(controller.ingest(jwt(), request(body = """{"eventId":"$other"}"""),
-            MockHttpServletResponse(), other).statusCode.value()).isEqualTo(409)
-        assertThat(seen).hasSize(2)
+        assertThat(controller.ingest(jwt("jti-c-0123456789abcdef"), request(body = """{"eventId":"$other"}"""),
+            MockHttpServletResponse(), other).statusCode.value()).isEqualTo(202)
+        assertThat(seen).hasSize(3)
     }
 
     @Test fun `the idempotency key must match the body event id`() {

@@ -15,12 +15,12 @@ class FileSnapshotCredentialsTest {
 
     private fun file(content: String) = directory.resolve("credential.json").also { it.toFile().writeText(content) }
 
-    private fun valid() = """{"token":"token-value","audience":"${WorkloadTokenProfile.SNAPSHOT_AUDIENCE}",
+    private fun valid() = """{"token":"aaa.bbb.ccc","audience":"${WorkloadTokenProfile.SNAPSHOT_AUDIENCE}",
         "scopes":["${WorkloadTokenProfile.SNAPSHOT_SCOPE}"],"expiresAt":"${now.plusSeconds(300)}"}"""
 
     @Test fun `a mounted credential is parsed`() {
         val credential = FileSnapshotCredentials(file(valid()), clock).credential()!!
-        assertThat(credential.token).isEqualTo("token-value")
+        assertThat(credential.token).isEqualTo("aaa.bbb.ccc")
         assertThat(credential.audience).isEqualTo(WorkloadTokenProfile.SNAPSHOT_AUDIENCE)
         assertThat(credential.scopes).containsExactly(WorkloadTokenProfile.SNAPSHOT_SCOPE)
         assertThat(credential.expiresAt).isEqualTo(now.plusSeconds(300))
@@ -34,7 +34,7 @@ class FileSnapshotCredentialsTest {
             .credential()).isNull()
         assertThat(FileSnapshotCredentials(file(valid().replace("\"token\"", "\"extra\":1,\"token\"")), clock)
             .credential()).isNull()
-        assertThat(FileSnapshotCredentials(file(valid().replace("\"token-value\"", "\"\"")), clock).credential())
+        assertThat(FileSnapshotCredentials(file(valid().replace("\"aaa.bbb.ccc\"", "\"\"")), clock).credential())
             .isNull()
     }
 }

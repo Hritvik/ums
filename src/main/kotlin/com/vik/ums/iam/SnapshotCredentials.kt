@@ -25,10 +25,13 @@ class FileSnapshotCredentials(
         if (node !is com.fasterxml.jackson.databind.node.ObjectNode || node.fieldNames().asSequence().toSet() != KEYS) {
             return null
         }
-        val scopes = node["scopes"].takeIf { it.isArray }?.map { it.asText() }?.toSet()
-            ?: return null
-        val token = node["token"].takeIf { it.isTextual }?.textValue() ?: return null
-        val audience = node["audience"].takeIf { it.isTextual }?.textValue() ?: return null
+        val scopes = node["scopes"].takeIf { it.isArray }
+            ?.takeIf { array -> array.all { it.isTextual && it.textValue().matches(SCOPE) } }
+            ?.map { it.textValue() }?.toSet() ?: return null
+        val token = node["token"].takeIf { it.isTextual }?.textValue()
+            ?.takeIf { it.matches(COMPACT_JWT) } ?: return null
+        val audience = node["audience"].takeIf { it.isTextual }?.textValue()
+            ?.takeIf { it.startsWith("https://") } ?: return null
         val expiresAt = node["expiresAt"].takeIf { it.isTextual }?.textValue()
             ?.let { Instant.parse(it) } ?: return null
         WorkloadCredential(token, audience, scopes, expiresAt)
@@ -37,5 +40,7 @@ class FileSnapshotCredentials(
     private companion object {
         val MAPPER = ObjectMapper()
         val KEYS = setOf("token", "audience", "scopes", "expiresAt")
+        val SCOPE = Regex("^[a-z][a-z0-9:_-]{0,63}$")
+        val COMPACT_JWT = Regex("^[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+$")
     }
 }

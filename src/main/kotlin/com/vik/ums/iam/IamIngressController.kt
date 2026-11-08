@@ -58,7 +58,7 @@ class IamIngressController(
             return ResponseEntity.status(422).body(mapOf("outcome" to "IDEMPOTENCY_KEY_MISMATCH",
                 "correlationId" to correlation))
         }
-        if (!replay.accept(resolution.principal.jti, idempotencyKey, resolution.principal.expiresAt)) {
+        if (!replay.accept(resolution.principal.jti, resolution.principal.expiresAt)) {
             return ResponseEntity.status(409).body(mapOf("outcome" to "REPLAY",
                 "correlationId" to correlation))
         }

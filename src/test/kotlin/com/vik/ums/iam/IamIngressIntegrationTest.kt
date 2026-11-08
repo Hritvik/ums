@@ -55,14 +55,15 @@ class IamIngressIntegrationTest {
             setOf(audience), setOf("ums:onboarding:write"))
         val resolver = WorkloadCallerResolver(issuer, audience, "ums:onboarding:write",
             WorkloadRegistrations(listOf(registration)), Clock.fixed(now, ZoneOffset.UTC))
-        controller = IamIngressController(resolver, ingestion)
+        controller = IamIngressController(resolver, ingestion, WorkloadReplayCache(Clock.fixed(now, ZoneOffset.UTC)))
     }
 
-    private fun jwt(appId: String = "dutch-development", scope: String = "ums:onboarding:write"): Jwt {
+    private fun jwt(appId: String = "dutch-development", scope: String = "ums:onboarding:write",
+                    jti: String = "0123456789abcdef"): Jwt {
         val claims = mapOf<String, Any>(
             "iss" to issuer, "sub" to workload, "aud" to audience,
             "iat" to now.epochSecond, "exp" to now.plusSeconds(300).epochSecond,
-            "jti" to "0123456789abcdef", "client_id" to "iam-relay",
+            "jti" to jti, "client_id" to "iam-relay",
             "token_profile" to "workload_access", "token_version" to 1,
             "subject_kind" to "workload", "scope" to scope, "app_id" to appId, "security_version" to 1,
         )
@@ -81,7 +82,7 @@ class IamIngressIntegrationTest {
         "onboardingReason":"FIRST_ACTIVATION","onboardingVersion":1,"requiredProfileState":"PROFILE_REQUIRED"}}
     """.trimIndent()
 
-    private fun deliver(body: String, key: String, token: Jwt = jwt()): Int {
+    private fun deliver(body: String, key: String, token: Jwt = jwt(jti = "jti-${UUID.randomUUID()}")): Int {
         val request = MockHttpServletRequest("POST", "/internal/v1/iam/events").apply {
             setContent(body.toByteArray())
             addHeader("X-Correlation-ID", "cor_0123456789abcdef")
@@ -90,17 +91,21 @@ class IamIngressIntegrationTest {
     }
 
     @Test fun `two deliveries apply once each and a lost-response replay has no second effect`() {
-        assertThat(deliver(event("evt_0123456789abcdef01"), "evt_0123456789abcdef01")).isEqualTo(202)
+        val firstToken = jwt(jti = "jti-a-0123456789abcdef")
+        assertThat(deliver(event("evt_0123456789abcdef01"), "evt_0123456789abcdef01", firstToken)).isEqualTo(202)
         assertThat(deliver(event("evt_0123456789abcdef02", "aps_fedcba9876543210hijkLM", "act_fedcba9876543210"),
-            "evt_0123456789abcdef02")).isEqualTo(202)
+            "evt_0123456789abcdef02", jwt(jti = "jti-b-0123456789abcdef"))).isEqualTo(202)
         assertThat(jdbc.queryForObject("select count(*) from ums_profile_bindings", Long::class.java)).isEqualTo(2)
+
+        // A captured request replayed with the same token is rejected.
+        assertThat(deliver(event("evt_0123456789abcdef01"), "evt_0123456789abcdef01", firstToken)).isEqualTo(409)
 
         val outbox = jdbc.queryForObject(
             "select count(*) from ums_event_outbox where event_type = 'ums.profile.state-changed.v1'",
             Long::class.java)
-        // The same event id is delivered again after a lost response.
+        // IAM retries after a lost response with a fresh token and the same event id.
         assertThat(deliver(event("evt_0123456789abcdef02", "aps_fedcba9876543210hijkLM", "act_fedcba9876543210"),
-            "evt_0123456789abcdef02")).isEqualTo(202)
+            "evt_0123456789abcdef02", jwt(jti = "jti-c-0123456789abcdef"))).isEqualTo(202)
         assertThat(jdbc.queryForObject(
             "select count(*) from ums_event_outbox where event_type = 'ums.profile.state-changed.v1'",
             Long::class.java)).isEqualTo(outbox)

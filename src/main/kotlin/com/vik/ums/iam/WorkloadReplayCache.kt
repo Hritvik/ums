@@ -5,41 +5,44 @@ import java.time.Instant
 import java.util.concurrent.ConcurrentHashMap
 
 /**
- * Bounded replay guard for a mutating workload route: one `jti` may be used for one idempotency
- * key. Re-delivering the same key is allowed (the ingest dedupe decides it); using the same token
- * for a different key is rejected. Entries expire with the token and the map is capped.
+ * One `jti` is accepted once. IAM mints a fresh token for every delivery attempt (the event id, not
+ * the credential, is the retry key), so any reuse of a `jti` is a replay and is rejected. Entries
+ * expire with the token plus the resolver's clock skew, and the map is capped; at capacity a new
+ * token is refused rather than evicting a live entry.
  *
- * This is per-instance. A multi-replica deployment needs the same guard in shared storage; until
- * then the ingress replicas must not both accept the same token, which the deployment records.
+ * This is per-instance. A multi-replica ingress needs the same guard in shared storage; until then
+ * the deployment runs one accepting replica per audience, matching the relay's single destination.
  */
 class WorkloadReplayCache(
     private val clock: Clock = Clock.systemUTC(),
     private val maximumEntries: Int = 10_000,
 ) {
-    private val seen = ConcurrentHashMap<String, Entry>()
+    private val seen = ConcurrentHashMap<String, Instant>()
 
     init { require(maximumEntries in 1..1_000_000) { "Replay cache bound is out of range" } }
 
-    fun accept(jti: String, idempotencyKey: String, expiresAt: Instant): Boolean {
+    /** True only for the first use of this `jti`; false for a replay or at capacity. */
+    fun accept(jti: String, expiresAt: Instant): Boolean {
         val now = clock.instant()
-        if (seen.size >= maximumEntries) purge(now)
+        val entryExpiry = expiresAt.plusSeconds(WorkloadTokenProfile.CLOCK_SKEW_SECONDS)
+        if (seen.size >= maximumEntries) seen.entries.removeIf { !it.value.isAfter(now) }
         var accepted = false
         seen.compute(jti) { _, existing ->
-            if (existing == null || !existing.expiresAt.isAfter(now)) {
-                accepted = true
-                Entry(idempotencyKey, expiresAt)
-            } else {
-                accepted = existing.idempotencyKey == idempotencyKey
-                existing
+            when {
+                existing != null && existing.isAfter(now) -> {
+                    accepted = false
+                    existing
+                }
+                existing == null && seen.size >= maximumEntries -> {
+                    accepted = false
+                    null
+                }
+                else -> {
+                    accepted = true
+                    entryExpiry
+                }
             }
         }
         return accepted
     }
-
-    private fun purge(now: Instant) {
-        seen.entries.removeIf { !it.value.expiresAt.isAfter(now) }
-        if (seen.size >= maximumEntries) seen.clear()
-    }
-
-    private data class Entry(val idempotencyKey: String, val expiresAt: Instant)
 }

@@ -47,7 +47,7 @@ class IamSnapshotClientTest {
     private fun valid(expiresAt: Instant = now.plusSeconds(300),
                       audience: String = WorkloadTokenProfile.SNAPSHOT_AUDIENCE,
                       scopes: Set<String> = setOf(WorkloadTokenProfile.SNAPSHOT_SCOPE)) =
-        WorkloadCredential("token-value", audience, scopes, expiresAt)
+        WorkloadCredential("aaa.bbb.ccc", audience, scopes, expiresAt)
 
     @Test fun `a valid workload credential fetches one bounded page`() {
         val result = client().fetch()
@@ -55,7 +55,7 @@ class IamSnapshotClientTest {
         val page = result as SnapshotFetch.Page
         assertThat(page.body.decodeToString()).contains("dutch-development")
         assertThat(page.correlationId).matches("^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$")
-        assertThat(headers["Authorization"]).isEqualTo("Bearer token-value")
+        assertThat(headers["Authorization"]).isEqualTo("Bearer aaa.bbb.ccc")
         assertThat(headers["Accept"]).isEqualTo("application/json")
         assertThat(headers["Correlation"]).isEqualTo(page.correlationId)
         assertThat(requests.single().requestURI.path)
@@ -110,6 +110,25 @@ class IamSnapshotClientTest {
         assertThat(client().fetch("")).isEqualTo(SnapshotFetch.Failed(false, "INVALID_CURSOR"))
         assertThat(client().fetch("x".repeat(513))).isEqualTo(SnapshotFetch.Failed(false, "INVALID_CURSOR"))
         assertThat(requests.size).isEqualTo(1)
+    }
+
+    @Test fun `construction bounds the endpoint and body limits`() {
+        assertThat(IamSnapshotClient(URI.create("https://iam.example.test/"), "dutch-development",
+            { valid() }, clock).let { "constructed" }).isEqualTo("constructed")
+        assertThatThrownBy {
+            IamSnapshotClient(URI.create("https://user:pass@iam.example.test/"), "dutch-development", { valid() }, clock)
+        }.isInstanceOf(IllegalArgumentException::class.java)
+        assertThatThrownBy {
+            IamSnapshotClient(URI.create("https://iam.example.test/"), "UPPER", { valid() }, clock)
+        }.isInstanceOf(IllegalArgumentException::class.java)
+        assertThatThrownBy {
+            IamSnapshotClient(URI.create("https://iam.example.test/"), "dutch-development", { valid() }, clock,
+                java.time.Duration.ZERO)
+        }.isInstanceOf(IllegalArgumentException::class.java)
+        assertThatThrownBy {
+            IamSnapshotClient(URI.create("https://iam.example.test/"), "dutch-development", { valid() }, clock,
+                java.time.Duration.ofSeconds(1), maximumBytes = 0)
+        }.isInstanceOf(IllegalArgumentException::class.java)
     }
 
     @Test fun `an unavailable endpoint is retryable and non-loopback plain HTTP is refused`() {

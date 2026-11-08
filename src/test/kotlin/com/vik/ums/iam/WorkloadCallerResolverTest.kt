@@ -67,8 +67,10 @@ class WorkloadCallerResolverTest {
 
     @Test fun `header, claim set and issuer are exact`() {
         assertThat(denial(jwt(typ = "JWT"))).isEqualTo(WorkloadDenial.HEADER_MISMATCH)
+        assertThat(denial(jwt(alg = "RS256"))).isEqualTo(WorkloadDenial.HEADER_MISMATCH)
         assertThat(denial(jwt(alg = ""))).isEqualTo(WorkloadDenial.HEADER_MISMATCH)
         assertThat(denial(jwt(kid = ""))).isEqualTo(WorkloadDenial.HEADER_MISMATCH)
+        assertThat(denial(jwt(kid = "short"))).isEqualTo(WorkloadDenial.HEADER_MISMATCH)
         assertThat(denial(jwt { it["cnf"] = mapOf("jkt" to "x") })).isEqualTo(WorkloadDenial.CLAIM_SET_MISMATCH)
         assertThat(denial(jwt { it.remove("security_version") })).isEqualTo(WorkloadDenial.CLAIM_SET_MISMATCH)
         assertThat(denial(jwt { it["iss"] = "https://other.example.test" })).isEqualTo(WorkloadDenial.ISSUER_MISMATCH)
@@ -81,6 +83,10 @@ class WorkloadCallerResolverTest {
         assertThat(denial(jwt { it["sub"] = "wl_short" })).isEqualTo(WorkloadDenial.WORKLOAD_ID_MISMATCH)
         assertThat(denial(jwt { it["jti"] = "short" })).isEqualTo(WorkloadDenial.JTI_MISMATCH)
         assertThat(denial(jwt { it["security_version"] = 0 })).isEqualTo(WorkloadDenial.SECURITY_VERSION_INVALID)
+        assertThat(denial(jwt { it["security_version"] = "1" })).isEqualTo(WorkloadDenial.SECURITY_VERSION_INVALID)
+        assertThat(denial(jwt { it["token_version"] = "1" })).isEqualTo(WorkloadDenial.VERSION_UNSUPPORTED)
+        assertThat(denial(jwt { it["scope"] = (1..40).joinToString(" ") { "s$it" } }))
+            .isEqualTo(WorkloadDenial.SCOPE_NOT_ALLOWED)
     }
 
     @Test fun `temporal rules reject expired, overlong, and future tokens`() {

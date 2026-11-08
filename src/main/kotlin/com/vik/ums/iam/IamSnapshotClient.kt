@@ -70,7 +70,7 @@ class IamSnapshotClient(
     fun fetch(cursor: String? = null): SnapshotFetch {
         val credential = credentials.credential()
             ?: return SnapshotFetch.RefusedCredential(SnapshotCredentialDenial.MISSING)
-        if (credential.token.isBlank() || credential.token.length > 8192) {
+        if (credential.token.length > 8192 || !credential.token.matches(COMPACT_JWT)) {
             return SnapshotFetch.RefusedCredential(SnapshotCredentialDenial.MISSING)
         }
         if (!credential.expiresAt.isAfter(clock.instant())) {
@@ -118,5 +118,6 @@ class IamSnapshotClient(
 
     private companion object {
         val LOOPBACK = setOf("127.0.0.1", "localhost", "::1")
+        val COMPACT_JWT = Regex("^[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+$")
     }
 }
