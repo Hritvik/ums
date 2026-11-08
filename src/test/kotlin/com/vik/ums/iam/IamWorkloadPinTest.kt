@@ -13,6 +13,8 @@ class IamWorkloadPinTest {
 
     @Test fun `every pinned artifact still matches the manifest hash`() {
         val pin = ObjectMapper().readTree(root.resolve("PIN.json").toFile())
+        assertThat(pin["sourceCommit"].asText()).matches("[0-9a-f]{7,40}")
+        assertThat(pin.has("sourceState")).isFalse()
         val files = pin["files"]
         assertThat(files.size()).isGreaterThanOrEqualTo(4)
         files.forEach { entry ->

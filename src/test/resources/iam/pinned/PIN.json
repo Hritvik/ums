@@ -2,8 +2,8 @@
   "profile": "workload_access v1",
   "accepted": "2026-11-08",
   "sourceRepository": "iam",
-  "sourceCommit": "ed5effa",
-  "note": "Reviewed IAM artifacts pinned for UMS acceptance tests; regenerate with the IAM publication.",
+  "sourceCommit": "b831ea5",
+  "note": "Reviewed IAM artifacts committed at b831ea5; regenerate this pin when IAM republishes the profile.",
   "files": [
     {
       "path": "iam-onboarding-snapshot.openapi.yaml",
@@ -25,6 +25,5 @@
       "sha256": "5eed3b234cf8cc11934e81b17bc9c4b7b23cca6dd05300fdeeacf0e317e26036",
       "bytes": 452
     }
-  ],
-  "sourceState": "IAM working tree at ed5effa; the two oauth schemas are untracked and two contracts are modified, so this pins the reviewed working tree, not a commit. IAM must commit them before production."
+  ]
 }

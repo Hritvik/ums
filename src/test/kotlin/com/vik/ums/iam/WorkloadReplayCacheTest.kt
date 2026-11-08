@@ -7,6 +7,11 @@ import java.time.Instant
 import java.time.ZoneOffset
 
 class WorkloadReplayCacheTest {
+    private class MutableClock(var now: Instant) : Clock() {
+        override fun getZone(): java.time.ZoneId = ZoneOffset.UTC
+        override fun withZone(zone: java.time.ZoneId?): Clock = this
+        override fun instant(): Instant = now
+    }
     private val now = Instant.parse("2026-11-08T07:00:00Z")
     private val clock = Clock.fixed(now, ZoneOffset.UTC)
     private val expiry = now.plusSeconds(300)
@@ -19,11 +24,15 @@ class WorkloadReplayCacheTest {
     }
 
     @Test fun `an entry expires with the token plus the clock skew`() {
-        val cache = WorkloadReplayCache(clock)
+        val moving = MutableClock(now)
+        val cache = WorkloadReplayCache(moving)
+        // The token expired 120s ago, so exp + 60s is already in the past: the jti is reusable.
         assertThat(cache.accept("jti-0123456789abcdef", now.minusSeconds(120))).isTrue()
-        // The token is already expired; after the skew window the jti may be reused.
-        val later = WorkloadReplayCache(Clock.fixed(now.plusSeconds(1), ZoneOffset.UTC))
-        assertThat(later.accept("jti-0123456789abcdef", now.plusSeconds(300))).isTrue()
+        assertThat(cache.accept("jti-0123456789abcdef", now.minusSeconds(120))).isTrue()
+        // A live token is not reusable, even after the clock advances inside its lifetime.
+        assertThat(cache.accept("jti-fedcba9876543210", now.plusSeconds(300))).isTrue()
+        moving.now = now.plusSeconds(120)
+        assertThat(cache.accept("jti-fedcba9876543210", now.plusSeconds(300))).isFalse()
     }
 
     @Test fun `at capacity a new jti is refused rather than evicting a live one`() {
