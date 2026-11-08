@@ -1,0 +1,68 @@
+version: 1.0.0
+event:
+  onboardingCrossFieldEquality:
+    level: MUST
+    requirements:
+      - destination.appRegistrationId equals payload.appRegistrationId
+      - aggregate.id equals payload.activationId
+      - aggregate.version equals payload.onboardingVersion
+    verification: Producer and consumer implementation tests must reject each mismatch before state mutation.
+token:
+  dutchRegistrationTuple:
+    level: MUST
+    requirements:
+      - iss equals the registered authorization server issuer
+      - app_id equals the target app registration ID
+      - client_id equals the registered client ID
+      - aud equals the single registered resource audience
+      - every requested scope is a subset of registered allowed scopes
+      - cnf.jkt is present for a registration requiring DPoP
+      - exp is greater than iat
+      - auth_time is absent or less than or equal to iat
+    extensibility: Apply the same tuple rules to each first-party app's own registration; Dutch values are conformance fixtures, not platform constants.
+    verification: Issuer and resource implementation tests must reject each mismatch.
+  workloadAccess:
+    level: MUST
+    requirements:
+      - iss equals the workload token issuer
+      - aud equals exactly one registered workload audience
+      - app_id and client_id equal the registered workload binding
+      - sub is a stable workload identity, never a human identity or app subject
+      - token_profile is workload_access, token_version is 1, and subject_kind is workload
+      - scope is a subset of the binding's allowed scopes and contains the resource's required scope
+      - exp is greater than iat and the token lifetime does not exceed 900 seconds
+      - workload tokens carry no cnf, acr, amr, auth_time, or act claim
+      - a resource rejects a workload token for a different app registration with a non-enumerating 404
+    verification: Issuer and resource implementation tests must reject each mismatch before state mutation.
+  dpopTokenEndpoint:
+    level: MUST
+    requirements:
+      - every token request uses exactly one ES256 proof containing a public P-256 JWK
+      - the proof htm is POST and htu is the exact normalized token endpoint URI
+      - the token endpoint URI is the migration-owned authorization server issuer plus /oauth2/token
+      - proof jti values are canonical unpadded base64url-compatible strings of 22 to 128 characters
+      - the proof contains a fresh single-use nonce and contains no ath claim
+      - the issued access token cnf.jkt equals the RFC 7638 thumbprint of the proof JWK
+      - a successful response has token_type DPoP and contains neither refresh_token nor id_token
+      - OAuth and DPoP errors use only the closed error and description pairs
+    verification: Token endpoint tests must prove nonce challenge, exact proof binding, replay rejection, and closed success and error bodies before authorization state commits.
+registration:
+  redirectSafety:
+    level: MUST
+    requirements:
+      - every redirect URI is an exact registered value
+      - a custom scheme is app-owned and explicitly registered to that app
+      - an HTTPS redirect uses a domain claimed by that app
+      - HTTP is accepted only for IPv4 127/8 with four decimal octets each in 0..255 or IPv6 exactly [::1]
+      - every HTTP loopback redirect has an explicit numeric port in 1..65535
+      - redirect URIs contain neither userinfo nor fragments
+      - javascript, data, and file schemes are always rejected
+    verification: Registration and authorization-request implementation tests must prove exact match, app ownership, claimed HTTPS ownership, loopback bounds, and unsafe-scheme rejection.
+snapshot:
+  xExtensionsEnforcement:
+    level: MUST
+    requirements:
+      - x-required-audience is authorization policy, not documentation only
+      - x-required-scope is authorization policy, not documentation only
+      - x-workload-app-binding is authorization policy, not documentation only
+    verification: Implementation tests must prove audience, scope, and app-binding mismatch rejection, including the non-enumerating 404 binding response.

@@ -39,6 +39,11 @@ class StartupSafetyConfiguration(environment: Environment) {
         CallerRegistrations.parse(required(environment, "ums.security.registrations"))
         runCatching { UUID.fromString(required(environment, "ums.iam.issuer-environment-ref")) }
             .getOrElse { throw IllegalArgumentException("ums.iam.issuer-environment-ref must be a UUID") }
+        if (environment.getProperty("ums.iam.ingress.enabled", "false").toBoolean()) {
+            requireHttps(environment, "ums.iam.ingress.audience")
+            required(environment, "ums.iam.app-registrations")
+            com.vik.ums.iam.WorkloadRegistrations.parse(required(environment, "ums.iam.workload-registrations"))
+        }
     }
 
     private fun required(environment: Environment, property: String): String {

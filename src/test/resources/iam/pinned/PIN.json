@@ -1,0 +1,29 @@
+{
+  "profile": "workload_access v1",
+  "accepted": "2026-11-08",
+  "sourceRepository": "iam",
+  "sourceCommit": "DEP-2/DEP-3 evidence at 2026-11-08",
+  "note": "Reviewed IAM artifacts pinned for UMS acceptance tests; regenerate with the IAM publication.",
+  "files": [
+    {
+      "path": "iam-onboarding-snapshot.openapi.yaml",
+      "sha256": "9f87d53aa9f795747f32787778ddcedfa0a120a02edc59ff0f5d39ce24554179",
+      "bytes": 6876
+    },
+    {
+      "path": "semantic-requirements.yaml",
+      "sha256": "11e07dd88235ba4455ce874e3d9afea3a287a3faf65690b0b5ac027ff6f9d10e",
+      "bytes": 4144
+    },
+    {
+      "path": "workload-access-token-claims.schema.json",
+      "sha256": "025b95528e93f4f3569beec2e47b15e5f6bc378a804493e595d6d36f0f4e0777",
+      "bytes": 1288
+    },
+    {
+      "path": "workload-access-token-header.schema.json",
+      "sha256": "5eed3b234cf8cc11934e81b17bc9c4b7b23cca6dd05300fdeeacf0e317e26036",
+      "bytes": 452
+    }
+  ]
+}

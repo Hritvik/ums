@@ -24,7 +24,7 @@ data class TrustedProducerRequest(
     init {
         require(applicationId.matches(Regex("[a-z][a-z0-9-]{2,63}"))) { "Application id is malformed" }
         require(producer.matches(Regex("[a-z][a-z0-9-]{1,63}"))) { "Producer is malformed" }
-        require(correlationId.matches(Regex("[A-Za-z0-9._:-]{1,128}"))) { "Correlation id is malformed" }
+        require(correlationId.matches(Regex("[A-Za-z0-9][A-Za-z0-9._:-]{0,127}"))) { "Correlation id is malformed" }
         require(body.isNotEmpty()) { "Payload is empty" }
     }
 }
@@ -41,6 +41,11 @@ enum class IngestionOutcome {
 
 data class IngestionResult(val outcome: IngestionOutcome, val quarantineReference: UUID? = null)
 
+/** The transport seam: one already-attributed request in, one bounded outcome out. */
+fun interface IamIngest {
+    fun ingest(request: TrustedProducerRequest): IngestionResult
+}
+
 /**
  * Bounded, strict inbound processing for registered IAM events. Malformed or unattributable
  * payloads are quarantined with a safe class and a digest; they are never retried forever and
@@ -52,13 +57,13 @@ class IamEventIngestionService(
     private val registeredProducer: String,
     private val maximumBytes: Int = 32 * 1024,
     private val clock: Clock = Clock.systemUTC(),
-) {
+) : IamIngest {
     init {
         require(registeredProducer.matches(Regex("[a-z][a-z0-9-]{1,63}"))) { "Registered producer is malformed" }
         require(maximumBytes in 1..(1024 * 1024)) { "Payload bound must be between 1 byte and 1 MiB" }
     }
 
-    fun ingest(request: TrustedProducerRequest): IngestionResult {
+    override fun ingest(request: TrustedProducerRequest): IngestionResult {
         if (request.producer != registeredProducer) return quarantine(request, "PRODUCER_MISMATCH")
         if (request.body.size > maximumBytes) return quarantine(request, "PAYLOAD_TOO_LARGE")
         val json = decode(request.body) ?: return quarantine(request, "INVALID_ENCODING")

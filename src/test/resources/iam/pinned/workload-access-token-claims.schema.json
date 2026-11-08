@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.distracted.dev/iam/oauth/workload-access-token-claims.schema.json",
+  "title": "Workload Access Token Claims v1",
+  "type": "object", "additionalProperties": false,
+  "required": ["iss", "sub", "aud", "exp", "iat", "jti", "client_id", "token_profile", "token_version", "subject_kind", "scope", "app_id", "security_version"],
+  "properties": {
+    "iss": {"type": "string", "format": "uri", "pattern": "^https://", "maxLength": 256},
+    "sub": {"type": "string", "pattern": "^wl_[A-Za-z0-9_-]{22,128}$"},
+    "aud": {"type": "string", "format": "uri", "pattern": "^https://", "maxLength": 256},
+    "exp": {"type": "integer", "minimum": 1},
+    "iat": {"type": "integer", "minimum": 1},
+    "jti": {"type": "string", "pattern": "^[A-Za-z0-9_-]{16,128}$"},
+    "client_id": {"type": "string", "pattern": "^[a-z][a-z0-9-]{2,63}$"},
+    "token_profile": {"const": "workload_access"},
+    "token_version": {"const": 1},
+    "subject_kind": {"const": "workload"},
+    "scope": {"type": "string", "pattern": "^[a-z][a-z0-9:_-]{0,63}( [a-z][a-z0-9:_-]{0,63}){0,31}$"},
+    "app_id": {"type": "string", "pattern": "^[a-z][a-z0-9-]{2,63}$"},
+    "security_version": {"type": "integer", "minimum": 1}
+  }
+}

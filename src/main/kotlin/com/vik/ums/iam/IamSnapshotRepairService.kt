@@ -30,7 +30,7 @@ data class SnapshotRepairRequest(
         require(applicationId.matches(Regex("[a-z][a-z0-9-]{2,63}"))) { "Application id is malformed" }
         require(producer.matches(Regex("[a-z][a-z0-9-]{1,63}"))) { "Producer is malformed" }
         require(subjectReference.matches(Regex("aps_[A-Za-z0-9_-]{22,128}"))) { "Subject reference is malformed" }
-        require(correlationId.matches(Regex("[A-Za-z0-9._:-]{1,128}"))) { "Correlation id is malformed" }
+        require(correlationId.matches(Regex("[A-Za-z0-9][A-Za-z0-9._:-]{0,127}"))) { "Correlation id is malformed" }
         require(body.isNotEmpty()) { "Payload is empty" }
     }
 }

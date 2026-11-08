@@ -26,9 +26,10 @@ class SecurityConfiguration {
     fun jwtDecoder(environment: Environment): JwtDecoder {
         val decoder = NimbusJwtDecoder.withJwkSetUri(environment.getRequiredProperty("ums.security.jwk-set-uri")).build()
         val audience = environment.getRequiredProperty("ums.security.audience")
+        val workloadAudience = environment.getProperty("ums.iam.ingress.audience")?.takeIf { it.isNotBlank() }
         decoder.setJwtValidator(DelegatingOAuth2TokenValidator(
             JwtValidators.createDefaultWithIssuer(environment.getRequiredProperty("ums.security.issuer")),
-            AudienceValidator(audience),
+            AcceptedAudiencesValidator(setOfNotNull(audience, workloadAudience)),
         ))
         return decoder
     }
@@ -92,6 +93,8 @@ class SecurityConfiguration {
                 .requestMatchers(HttpMethod.POST, "/api/v1/profile/exports/*/downloads").authenticated()
                 .requestMatchers(HttpMethod.POST, "/api/v1/profile/exports/downloads").authenticated()
                 .requestMatchers(HttpMethod.GET, "/api/v1/profile/status").authenticated()
+                // The IAM relay presents workload_access; the controller enforces that profile.
+                .requestMatchers(HttpMethod.POST, "/internal/v1/iam/events").authenticated()
                 .anyRequest().denyAll()
         }
         .oauth2ResourceServer {

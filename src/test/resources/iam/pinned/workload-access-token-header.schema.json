@@ -1,0 +1,12 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.distracted.dev/iam/oauth/workload-access-token-header.schema.json",
+  "title": "Workload Access Token JOSE Header v1",
+  "type": "object", "additionalProperties": false,
+  "required": ["typ", "alg", "kid"],
+  "properties": {
+    "typ": {"const": "at+jwt"},
+    "alg": {"const": "ES256"},
+    "kid": {"type": "string", "pattern": "^[A-Za-z0-9_-]{8,128}$"}
+  }
+}
