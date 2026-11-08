@@ -23,7 +23,7 @@ trap cleanup EXIT
 python3 "$DIR/../bindings/verify.py" || fail "binding verification"
 pass "binding topology, defaults and association-report pin"
 
-# 3. Resolve the real boot jar, building it if the caller did not supply one.
+# 2. Resolve the real boot jar, building it if the caller did not supply one.
 if [[ -z "${UMS_JAR:-}" ]]; then
   if ! ls "$ROOT"/build/libs/ums-*.jar >/dev/null 2>&1; then
     (cd "$ROOT" && ./gradlew bootJar --console=plain >/dev/null) || fail "bootJar"
@@ -36,11 +36,11 @@ UMS_JAR="$(cd "$(dirname "$UMS_JAR")" && pwd)/$(basename "$UMS_JAR")"
 export UMS_JAR
 pass "UMS artifact present"
 
-# 4. Compose needs the artifact path, so validate after it is resolved.
+# 3. Compose needs the artifact path, so validate after it is resolved.
 "${COMPOSE[@]}" config --quiet || fail "compose configuration"
 pass "compose configuration resolves the artifact"
 
-# 5. Stand the topology up.
+# 4. Stand the topology up.
 "${COMPOSE[@]}" up -d || fail "compose up"
 for _ in $(seq 1 90); do
   if curl -fsS "http://localhost:18080/actuator/health" >/dev/null 2>&1; then break; fi
@@ -53,30 +53,30 @@ curl -fsS "http://localhost:18080/actuator/health" >/dev/null || {
 }
 pass "UMS and IAM stub health endpoints are UP"
 
-# 6. The authenticated surface stays closed without a caller token.
+# 5. The authenticated surface stays closed without a caller token.
 status="$(curl -s -o /dev/null -w '%{http_code}' "http://localhost:18080/api/v1/profile")"
 [[ "$status" == "401" ]] || fail "unauthenticated /api/v1/profile returned $status"
 pass "unauthenticated profile route is 401"
 
-# 7. Privacy-sensitive capabilities are off in the shipped profile.
+# 6. Privacy-sensitive capabilities are off in the shipped profile.
 relay="$( "${COMPOSE[@]}" exec -T ums printenv UMS_OUTBOX_RELAY_ENABLED )"
 content="$( "${COMPOSE[@]}" exec -T ums printenv UMS_CONTENT_AUTHORITY_URI || true )"
 [[ "$relay" == "false" ]] || fail "relay default is $relay"
 [[ -z "$content" ]] || fail "content authority default is not empty"
 pass "outbox relay and content authority are default-off"
 
-# 8. The UMS store migrated to the published version on its own database.
+# 7. The UMS store migrated to the published version on its own database.
 version="$( "${COMPOSE[@]}" exec -T ums-db psql -U ums -d ums -tAc \
   "select max(version::int) from flyway_schema_history" )"
 [[ "$version" == "25" ]] || fail "UMS schema version is $version"
 pass "UMS store is at migration 25"
 
-# 9. With egress disabled the separate Dutch store stays empty.
+# 8. With egress disabled the separate Dutch store stays empty.
 count="$(curl -fsS "http://localhost:18082/inbox" | python3 -c 'import json,sys; print(json.load(sys.stdin)["count"])')"
 [[ "$count" == "0" ]] || fail "Dutch stub received $count reports while egress is off"
 pass "Dutch store is separate and empty while egress is off"
 
-# 10. Fail closed: enabling egress without a consumer URI must stop startup.
+# 9. Fail closed: enabling egress without a consumer URI must stop startup.
 if "${COMPOSE[@]}" run --rm --no-deps -e UMS_OUTBOX_RELAY_ENABLED=true ums \
     >"$DIR/.negative.log" 2>&1; then
   fail "UMS started with egress enabled and no consumer URI"

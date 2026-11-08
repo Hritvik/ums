@@ -42,7 +42,7 @@ SECRET_KEYS = {"token", "password", "secret", "apikey", "bearertoken", "privatek
 def secret_key(key: str) -> bool:
     normalized = key.replace("-", "").replace("_", "").lower()
     return normalized in SECRET_KEYS or normalized.endswith("token") or normalized.endswith("password") \
-        or normalized.endswith("secret")
+        or normalized.endswith("secret") or normalized.endswith("key")
 
 
 def fail(problems: list[str], condition: bool, message: str) -> None:
@@ -170,8 +170,7 @@ def check_text_file(path: Path) -> list[str]:
             continue
         key, _, value = stripped.partition(":")
         value = value.strip().strip('"')
-        if secret_key(key.strip()) and value and not value.startswith("${") and not value.startswith("[") \
-                and not value.startswith("["):
+        if secret_key(key.strip()) and value and not value.startswith("${") and not value.startswith("["):
             problems.append(f"{path.name}:{number} has a literal {key.strip()}")
     return problems
 

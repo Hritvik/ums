@@ -111,8 +111,8 @@ machine.
 ## Published pin (W-8)
 
 Dutch consumes the report as a read-only pin. UMS publishes a versioned bundle with a manifest and
-hashes. The schema and `valid-live.json` are canonical under `contracts/v1/`; the tombstone and
-reject fixtures are derived for this pin from the published rules.
+hashes. The schema and `valid-live.json` are canonical under `contracts/v1/`; the reject fixtures
+are published copies and the tombstone is derived for this pin from the published rules.
 
 | Artifact | Path |
 |---|---|

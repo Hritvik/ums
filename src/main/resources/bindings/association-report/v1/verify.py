@@ -19,7 +19,8 @@ import sys
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
-REPO = HERE.parents[5]
+# The bundle can be copied anywhere; only compare with the canonical tree when both exist.
+REPO = HERE.parents[5] if len(HERE.parents) > 5 else None
 MANIFEST = HERE / "MANIFEST.json"
 
 TOP_KEYS = {
@@ -41,8 +42,12 @@ ENVELOPE_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$")
 MAX_I64 = 9223372036854775807
 
 
+TIMESTAMP = re.compile(r"^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\.[0-9]{1,6})?Z$")
+VERSION = re.compile(r"^(0|[1-9][0-9]{0,18})$")
+
+
 def _timestamp(value: object) -> bool:
-    if not isinstance(value, str) or not value.endswith("Z"):
+    if not isinstance(value, str) or not TIMESTAMP.match(value):
         return False
     try:
         dt.datetime.fromisoformat(value.replace("Z", "+00:00"))
@@ -52,7 +57,7 @@ def _timestamp(value: object) -> bool:
 
 
 def _version(value: object) -> bool:
-    return isinstance(value, str) and value.isdigit() and len(value) <= 19 and int(value) <= MAX_I64
+    return isinstance(value, str) and VERSION.match(value) is not None and int(value) <= MAX_I64
 
 
 def validate_report(doc: object) -> list[str]:
@@ -136,8 +141,8 @@ def check() -> list[str]:
         if len(raw) != entry.get("bytes"):
             failures.append(f"size mismatch: {entry['path']}")
     schema = HERE / manifest["schema"]
-    canonical = REPO / manifest["canonical"]["schema"]
-    if canonical.is_file() and schema.read_bytes() != canonical.read_bytes():
+    canonical = REPO / manifest["canonical"]["schema"] if REPO else None
+    if canonical is not None and canonical.is_file() and schema.read_bytes() != canonical.read_bytes():
         failures.append("published schema differs from the canonical schema")
     if not (HERE / "common.json").is_file():
         failures.append("common.json is missing; the schema $ref cannot resolve")
