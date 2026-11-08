@@ -22,6 +22,7 @@ import java.util.UUID
 class IamIngressController(
     private val resolver: WorkloadCallerResolver,
     private val ingestion: IamIngest,
+    private val replay: WorkloadReplayCache = WorkloadReplayCache(),
     @param:Value("\${ums.iam.ingress.max-body-bytes:32768}") private val maxBodyBytes: Int = 32 * 1024,
 ) {
     init { require(maxBodyBytes in 1..(1024 * 1024)) { "Ingress body bound must be between 1 byte and 1 MiB" } }
@@ -41,9 +42,26 @@ class IamIngressController(
             return ResponseEntity.status(422).body(mapOf("outcome" to "INVALID_IDEMPOTENCY_KEY",
                 "correlationId" to correlation))
         }
-        val body = readBounded(request.inputStream, maxBodyBytes)
-            ?: return ResponseEntity.status(413).body(mapOf("outcome" to "PAYLOAD_TOO_LARGE",
+        val body = try {
+            readBounded(request.inputStream, maxBodyBytes)
+        } catch (aborted: java.io.IOException) {
+            return ResponseEntity.status(400).body(mapOf("outcome" to "REQUEST_ABORTED",
                 "correlationId" to correlation))
+        } ?: return ResponseEntity.status(413).body(mapOf("outcome" to "PAYLOAD_TOO_LARGE",
+            "correlationId" to correlation))
+        if (body.isEmpty()) {
+            return ResponseEntity.status(400).body(mapOf("outcome" to "EMPTY_BODY",
+                "correlationId" to correlation))
+        }
+        val bodyEventId = eventId(body)
+        if (bodyEventId != null && bodyEventId != idempotencyKey) {
+            return ResponseEntity.status(422).body(mapOf("outcome" to "IDEMPOTENCY_KEY_MISMATCH",
+                "correlationId" to correlation))
+        }
+        if (!replay.accept(resolution.principal.jti, idempotencyKey, resolution.principal.expiresAt)) {
+            return ResponseEntity.status(409).body(mapOf("outcome" to "REPLAY",
+                "correlationId" to correlation))
+        }
         val result = ingestion.ingest(TrustedProducerRequest(
             applicationId = resolution.principal.appRegistrationId,
             producer = PRODUCER,
@@ -59,7 +77,7 @@ class IamIngressController(
         return ResponseEntity.status(status).body(mapOf(
             "outcome" to result.outcome.name,
             "correlationId" to correlation,
-        ))
+        ).let { body -> result.quarantineReference?.let { body + ("quarantineReference" to it) } ?: body })
     }
 
     /** The association report requires an alphanumeric first character; a bad value is replaced. */
@@ -68,6 +86,11 @@ class IamIngressController(
 
     private fun unavailable(correlation: String): ResponseEntity<Map<String, Any>> =
         ResponseEntity.status(404).body(mapOf("error" to "unavailable", "correlationId" to correlation))
+
+    private fun eventId(body: ByteArray): String? = runCatching {
+        val node = MAPPER.readTree(body)
+        node?.get("eventId")?.takeIf { it.isTextual }?.textValue()
+    }.getOrNull()
 
     /** Reads at most [maximum] bytes; a larger stream is refused instead of buffered without bound. */
     private fun readBounded(input: java.io.InputStream, maximum: Int): ByteArray? {
@@ -81,12 +104,13 @@ class IamIngressController(
             if (total > maximum) return null
             buffer.write(chunk, 0, read)
         }
-        return buffer.toByteArray().takeIf { it.isNotEmpty() }
+        return buffer.toByteArray()
     }
 
     private companion object {
         const val PRODUCER = "iam"
         const val CORRELATION_HEADER = "X-Correlation-ID"
+        val MAPPER = com.fasterxml.jackson.databind.ObjectMapper()
         val CORRELATION = Regex("^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$")
         val EVENT_ID = Regex("^evt_[A-Za-z0-9_-]{16,128}$")
     }

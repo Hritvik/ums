@@ -41,7 +41,7 @@ class WorkloadCallerResolverTest {
         "security_version" to 1,
     )
 
-    private fun jwt(typ: String = "at+jwt", alg: String = "ES256", kid: String = "key-1",
+    private fun jwt(typ: String = "at+jwt", alg: String = "ES256", kid: String = "key-20261108",
                     overrides: (MutableMap<String, Any>) -> Unit = {}): Jwt {
         val values = claims().also(overrides)
         return Jwt.withTokenValue("token")
@@ -93,7 +93,7 @@ class WorkloadCallerResolverTest {
         assertThat(denial(jwt { it["iat"] = now.plusSeconds(61).epochSecond }))
             .isEqualTo(WorkloadDenial.TEMPORAL_INCONSISTENCY)
         // Within the allowed clock skew, a token is still accepted.
-        val skew = Jwt.withTokenValue("token").header("typ", "at+jwt").header("alg", "ES256").header("kid", "key-1")
+        val skew = Jwt.withTokenValue("token").header("typ", "at+jwt").header("alg", "ES256").header("kid", "key-20261108")
             .claims { it.putAll(claims().also { c -> c["iat"] = now.minusSeconds(30).epochSecond
                 c["exp"] = now.plusSeconds(30).epochSecond }) }
             .issuedAt(now.minusSeconds(30)).expiresAt(now.plusSeconds(30)).build()
@@ -112,6 +112,14 @@ class WorkloadCallerResolverTest {
         assertThat(denial(jwt { it["client_id"] = "other-client" })).isEqualTo(WorkloadDenial.UNREGISTERED_WORKLOAD)
         assertThat(denial(jwt { it["sub"] = "wl_abcdefghijklmnopqrstuv" }))
             .isEqualTo(WorkloadDenial.UNREGISTERED_WORKLOAD)
+    }
+
+    @Test fun `a workload token is not a human caller and a human profile is not a workload`() {
+        val human = CallerRegistrations(listOf(CallerRegistration(
+            "dutch-development", "dutch-web", "https://ums.example.test", setOf("profile:read"), false)))
+        val humanResolver = IamCallerResolver(issuer, human, Clock.fixed(now, ZoneOffset.UTC))
+        assertThatThrownBy { humanResolver.resolve(jwt()) }
+            .isInstanceOf(CallerDeniedException::class.java)
     }
 
     @Test fun `configuration fails closed without registrations or with a bad audience`() {

@@ -2,7 +2,7 @@
   "profile": "workload_access v1",
   "accepted": "2026-11-08",
   "sourceRepository": "iam",
-  "sourceCommit": "DEP-2/DEP-3 evidence at 2026-11-08",
+  "sourceCommit": "ed5effa",
   "note": "Reviewed IAM artifacts pinned for UMS acceptance tests; regenerate with the IAM publication.",
   "files": [
     {

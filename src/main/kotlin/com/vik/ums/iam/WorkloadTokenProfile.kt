@@ -32,6 +32,7 @@ object WorkloadTokenProfile {
     val CLIENT_ID = Regex("^[a-z][a-z0-9-]{2,63}$")
     val SCOPE = Regex("^[a-z][a-z0-9:_-]{0,63}$")
     val JTI = Regex("^[A-Za-z0-9_-]{16,128}$")
+    val KEY_ID = Regex("^[A-Za-z0-9_-]{8,128}$")
     val AUDIENCE = Regex("^https://[^\\s?#]+$")
 
     /** The IAM snapshot route's required audience and scope, for the repair client. */
@@ -47,6 +48,8 @@ data class WorkloadPrincipal(
     val scopes: Set<String>,
     val securityVersion: Long,
     val authenticatedAt: Instant,
+    val jti: String,
+    val expiresAt: Instant,
 )
 
 enum class WorkloadDenial {
@@ -92,8 +95,8 @@ class WorkloadCallerResolver(
     }
 
     fun resolve(jwt: Jwt): WorkloadResolution {
-        if (jwt.headers["typ"] != "at+jwt" || (jwt.headers["alg"] as? String)?.isNotBlank() != true ||
-            (jwt.headers["kid"] as? String)?.isNotBlank() != true) {
+        if (jwt.headers["typ"] != "at+jwt" || jwt.headers["alg"] != "ES256" ||
+            (jwt.headers["kid"] as? String)?.matches(WorkloadTokenProfile.KEY_ID) != true) {
             return WorkloadResolution.Denied(WorkloadDenial.HEADER_MISMATCH)
         }
         if (jwt.claims.keys != WorkloadTokenProfile.CLAIMS) {
@@ -126,9 +129,8 @@ class WorkloadCallerResolver(
         }
         val workloadId = string(jwt, "sub")?.takeIf { it.matches(WorkloadTokenProfile.WORKLOAD_ID) }
             ?: return WorkloadResolution.Denied(WorkloadDenial.WORKLOAD_ID_MISMATCH)
-        if (string(jwt, "jti")?.matches(WorkloadTokenProfile.JTI) != true) {
-            return WorkloadResolution.Denied(WorkloadDenial.JTI_MISMATCH)
-        }
+        val jti = string(jwt, "jti")?.takeIf { it.matches(WorkloadTokenProfile.JTI) }
+            ?: return WorkloadResolution.Denied(WorkloadDenial.JTI_MISMATCH)
         if (jwt.audience?.singleOrNull() != audience) {
             return WorkloadResolution.Denied(WorkloadDenial.AUDIENCE_MISMATCH)
         }
@@ -156,6 +158,8 @@ class WorkloadCallerResolver(
             scopes = scopes,
             securityVersion = securityVersion,
             authenticatedAt = issuedAt,
+            jti = jti,
+            expiresAt = expiresAt,
         ))
     }
 

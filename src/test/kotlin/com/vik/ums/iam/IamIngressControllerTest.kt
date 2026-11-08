@@ -32,7 +32,7 @@ class IamIngressControllerTest {
             IngestionOutcome.QUARANTINED -> IngestionResult(outcome, java.util.UUID.randomUUID())
             else -> IngestionResult(outcome)
         }
-    }, maxBytes)
+    }, WorkloadReplayCache(Clock.fixed(now, ZoneOffset.UTC)), maxBytes)
 
     private fun jwt(overrides: (MutableMap<String, Any>) -> Unit = {}): Jwt {
         val claims = mutableMapOf<String, Any>(
@@ -43,7 +43,7 @@ class IamIngressControllerTest {
             "subject_kind" to "workload", "scope" to "ums:onboarding:write",
             "app_id" to "dutch-development", "security_version" to 1,
         ).also(overrides)
-        return Jwt.withTokenValue("token").header("typ", "at+jwt").header("alg", "ES256").header("kid", "key-1")
+        return Jwt.withTokenValue("token").header("typ", "at+jwt").header("alg", "ES256").header("kid", "key-20261108")
             .claims { it.putAll(claims) }
             .issuedAt(Instant.ofEpochSecond((claims["iat"] as Number).toLong()))
             .expiresAt(Instant.ofEpochSecond((claims["exp"] as Number).toLong()))
@@ -99,7 +99,29 @@ class IamIngressControllerTest {
         assertThat(controller().ingest(null, request(), MockHttpServletResponse(), idempotency).statusCode.value())
             .isEqualTo(404)
         assertThat(controller().ingest(jwt(), request(body = ""), MockHttpServletResponse(), idempotency)
-            .statusCode.value()).isEqualTo(413)
+            .statusCode.value()).isEqualTo(400)
+        assertThat(seen).isEmpty()
+    }
+
+    @Test fun `a token used for a different event is a replay, a retried event is not`() {
+        val controller = controller(outcome = IngestionOutcome.DUPLICATE)
+        assertThat(controller.ingest(jwt(), request(), MockHttpServletResponse(), idempotency).statusCode.value())
+            .isEqualTo(202)
+        // The lost-response retry uses the same token and the same event id.
+        assertThat(controller.ingest(jwt(), request(), MockHttpServletResponse(), idempotency).statusCode.value())
+            .isEqualTo(202)
+        // The same token reused for a different event is a replay.
+        val other = "evt_0123456789abcdef99"
+        assertThat(controller.ingest(jwt(), request(body = """{"eventId":"$other"}"""),
+            MockHttpServletResponse(), other).statusCode.value()).isEqualTo(409)
+        assertThat(seen).hasSize(2)
+    }
+
+    @Test fun `the idempotency key must match the body event id`() {
+        val result = controller().ingest(jwt(), request(body = """{"eventId":"evt_0123456789abcdef99"}"""),
+            MockHttpServletResponse(), idempotency)
+        assertThat(result.statusCode.value()).isEqualTo(422)
+        assertThat(result.body?.get("outcome")).isEqualTo("IDEMPOTENCY_KEY_MISMATCH")
         assertThat(seen).isEmpty()
     }
 

@@ -30,6 +30,7 @@ import java.util.UUID
  * | `ums.iam.ingress.max-body-bytes` | default 32768, bounded to 1 MiB |
  * | `ums.iam.workload-registrations` | reviewed JSON array of workload bindings |
  * | `ums.iam.app-registrations` | reviewed JSON map of app registration to app reference |
+ * | `ums.iam.issuer-environment-ref` | the trusted IAM environment UUID |
  *
  * The token issuer and JWKS come from `ums.security.issuer` and `ums.security.jwk-set-uri`.
  */
@@ -54,6 +55,9 @@ class IamIngressConfiguration {
                                  environment: Environment, clock: java.time.Clock): IamEventIngestionService =
         IamEventIngestionService(jdbc, adapter, "iam",
             environment.getProperty("ums.iam.ingress.max-body-bytes", (32 * 1024).toString()).toInt(), clock)
+
+    @Bean
+    fun workloadReplayCache(clock: java.time.Clock): WorkloadReplayCache = WorkloadReplayCache(clock)
 
     @Bean
     fun workloadRegistrations(environment: Environment): WorkloadRegistrations =

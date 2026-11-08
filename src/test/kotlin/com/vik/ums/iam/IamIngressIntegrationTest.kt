@@ -66,7 +66,7 @@ class IamIngressIntegrationTest {
             "token_profile" to "workload_access", "token_version" to 1,
             "subject_kind" to "workload", "scope" to scope, "app_id" to appId, "security_version" to 1,
         )
-        return Jwt.withTokenValue("token").header("typ", "at+jwt").header("alg", "ES256").header("kid", "key-1")
+        return Jwt.withTokenValue("token").header("typ", "at+jwt").header("alg", "ES256").header("kid", "key-20261108")
             .claims { it.putAll(claims) }.issuedAt(now).expiresAt(now.plusSeconds(300)).build()
     }
 
