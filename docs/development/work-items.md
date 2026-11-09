@@ -538,7 +538,7 @@ gated on the contract fixtures both sides still have to validate.
 
 **Summary.** Everything so far has been proven locally, with a simulated product. The release claim only becomes real when a person can enter through IAM, get a profile, be associated as a Dutch member, and be correctly refused a Ledger action without the right permission. This item produces that evidence with the owning teams.
 
-**Status.** Planned — not started.
+**Status.** Ready once the registered dependencies are satisfied.
 
 **Work to be done.**
 - Run the journey against real services: IAM entry and activation, UMS profile creation and required fields, Dutch member association, and a product shell gated on readiness.
@@ -561,6 +561,11 @@ gated on the contract fixtures both sides still have to validate.
 - [ ] The IAM and Dutch owners give named acceptance for the exercised flows, and any declined flow is recorded as an open gate.
 - [ ] The evidence names the date, environment, and the reason any scenario could not be exercised.
 
+Also requires `iam/DEP-2`, `iam/DEP-3`, `ums/DUTCH-BINDING`,
+`dutch/PROFILE-BINDING`, `ums/IAM-RUNTIME-INGRESS`, and
+`dutch/UMS-RUNTIME-BINDING`. Run the first proof with real processes and approved
+synthetic fixtures. Repeat against private staging for launch acceptance.
+
 **Depends on.** `W-8, W-15, W-16, W-17.`
 
 ## Cut for Scope
@@ -572,3 +577,37 @@ This is work the work items exclude, not work deferred for lack of evidence. The
 - **Building product screens for the deletion, closure, or profile-required journeys.** The integration decision assigns UI hosting and product screens to the consuming application, so W-18 exercises the journeys through the real product rather than building them.
 - **Migrating or erasing the retired prototype's stored data.** The handoff requires a separately reviewed ownership and identifier reconciliation before any destructive change to populated data, and no live population has been established, so no work item touches it.
 - **Any availability, recovery-time, or throughput guarantee.** The accepted tier is best effort with no published availability percentage, so W-14 and W-15 record measured limits instead of promising them.
+
+## DUTCH-BINDING — Prepare authenticated provider bindings for the Dutch journey
+
+**Status.** Ready.
+
+UMS owns the standalone configuration and delivery bindings for IAM ingress, snapshot repair, and Dutch association egress. Prepare a secret-free topology and fixtures before IAM provides live credentials.
+
+**Acceptance**
+
+- Pin and publish the W-8 schema and fixtures with Dutch; record the environment trust, app scope, egress, retry and correlation bindings.
+- Use separately versioned services and stores in a repeatable synthetic harness. Show default-off privacy-sensitive capabilities and state how the deployed erasure journal is enforced before live use.
+
+## IAM-RUNTIME-INGRESS — Accept IAM delivery and authenticate snapshot repair in UMS
+
+**Status.** Ready.
+
+Build the authenticated UMS onboarding route and snapshot client against the accepted
+IAM workload profile and shared fixtures. IAM and UMS must agree the token replay rule,
+stable event id, acknowledgement and retry semantics, and repair credential acquisition.
+Pin the final provider artifacts. Cover duplicate deliveries, lost responses, wrong
+authority, correlation compatibility and the erasure fence. W-18 consumes this binding.
+
+## SNAPSHOT-MTLS — Authenticate the IAM snapshot pull with mTLS
+
+**Status.** Planned — waits on `iam/DEP-4` for the CA, client certificate and rotation.
+
+UMS reads the IAM onboarding snapshot with the accepted mTLS client credential, not a workload token. The workload token is for IAM-to-UMS delivery only; a token-based pull needs a separate narrow issuance decision.
+
+**Acceptance**
+- A mounted client certificate/key and truststore build the HTTP client; missing, expired and wrong-CA credentials fail closed before any request.
+- One bounded snapshot page feeds `IamSnapshotRepairService`; a lagging binding converges and an erased or restricted fence is refused.
+- Pair with IAM on the executable fixture/server and record the trust inputs for W-18; no human token endpoint is called.
+
+**Depends on.** `iam/DEP-4`.
