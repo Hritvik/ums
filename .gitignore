@@ -57,3 +57,7 @@ __pycache__/
 *.p12
 *.pfx
 *.keystore
+
+# Local agent wiring
+.codex/
+.opencode/

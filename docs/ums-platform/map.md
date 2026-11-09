@@ -50,8 +50,8 @@ None for the provider-neutral service specification. Concrete provider acceptanc
 ## Evidence pointers
 
 - [IAM boundary and vocabulary](../../../iam/docs/identity-platform/IAM-CONTEXT.md) — use the dedicated IAM repository; links to sibling repositories must be verified before handoff.
-- IAM canonical decisions: `/Users/hritvikdinkar/repositories/iam/docs/identity-platform/wayfinder/issues/01-define-identity-trust-and-privacy-boundaries.md`, `10-design-lifecycle-privacy-and-administration.md`, `12-define-apis-events-and-app-integration.md`, and `15-define-implementation-handoff.md` in that directory.
-- Portfolio expectation source: `/Users/hritvikdinkar/Documents/ChatGPT/Distracted Dev Micro Service Portfolio/capabilities/efforts/dutch/slice-1-identity-member-onboarding.yaml`.
-- Dutch integration source: `/Users/hritvikdinkar/repositories/dutch/docs/architecture/identity-membership-integration.md`.
+- IAM canonical decisions: `~/repositories/iam/docs/identity-platform/wayfinder/issues/01-define-identity-trust-and-privacy-boundaries.md`, `10-design-lifecycle-privacy-and-administration.md`, `12-define-apis-events-and-app-integration.md`, and `15-define-implementation-handoff.md` in that directory.
+- Portfolio expectation source: `~/Documents/ChatGPT/Distracted Dev Micro Service Portfolio/capabilities/efforts/dutch/slice-1-identity-member-onboarding.yaml`.
+- Dutch integration source: `~/repositories/dutch/docs/architecture/identity-membership-integration.md`.
 - Midas/Jarvis boundary decisions in the portfolio capability home currently exclude Dutch-specific UMS. Treat these as historical boundaries, not accepted shared-UMS requirements.
 - No consolidated shared-UMS consumer requirements list was found during initial corpus inspection. Do not relabel IAM consumer requirements as UMS commitments.

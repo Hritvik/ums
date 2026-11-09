@@ -1,7 +1,0 @@
-[mcp_servers.work-coordination]
-command = "/Users/hritvikdinkar/.pyenv/versions/3.14.4/bin/python3"
-args = ["/Users/hritvikdinkar/repositories/portfolio-planning/capabilities/work/mcp/server.py", "--root", "/Users/hritvikdinkar/repositories/portfolio-planning/capabilities/work"]
-
-[mcp_servers.work-coordination.env]
-WORK_REPO = "ums"
-WORK_AGENT = "ums-agent"
