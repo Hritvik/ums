@@ -158,7 +158,9 @@ class OutboxRelay(
                 .singleOrNull() ?: return@execute FailureOutcome.CLAIM_LOST
             val now = clock.instant()
             val nextAttempt = attempts + 1
-            if (nextAttempt >= maxAttempts) {
+            // A permanent refusal (3xx, or 4xx except 408/429) is a decision, not an outage:
+            // quarantine it at once instead of spending the retry budget and delaying the stream.
+            if (failureClass == OutboxFailureClass.TRANSPORT_REJECTED || nextAttempt >= maxAttempts) {
                 jdbc.update("""update ums_event_outbox set failure_class = ?, quarantined_at = ?,
                     attempts = ?, next_attempt_at = ?, claim_token = null where event_id = ?""",
                     failureClass.name, Timestamp.from(now), nextAttempt, Timestamp.from(now), claimed.event.eventId)

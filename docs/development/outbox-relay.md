@@ -25,14 +25,17 @@ a visible quarantine, and operator signals.
   and is replayed after its lease; a mark that keeps failing exhausts the interruption budget and
   is quarantined as `RELAY_INTERRUPTED` rather than blamed on the transport.
 - A failed head keeps its place and retries with exponential backoff (30 seconds doubling to one
-  hour by default). Other bindings are independent and keep flowing.
+  hour by default) when the failure is retryable. A permanent refusal quarantines on the first
+  occurrence; either way, other bindings are independent and keep flowing.
 - Only genuine delivery failures count as delivery attempts. Separately, a fact is counted as
   attempted when it is about to be published, so a crash while publishing one head does not spend
   the interruption budget of the rest of the batch. A fact attempted the configured number of
   times without ever recording a delivery failure is quarantined as `RELAY_INTERRUPTED`, so a
-  pass that keeps dying is bounded rather than retried forever. After the configured number of failures the row is
-  quarantined with `TRANSPORT_UNAVAILABLE` or `TRANSPORT_REJECTED`. The
-  quarantined head holds its own `(application, stream)` — later revisions of that binding are not
+  pass that keeps dying is bounded rather than retried forever. A retryable failure is quarantined with `TRANSPORT_UNAVAILABLE` after the configured
+  number of attempts. A permanent refusal (`TRANSPORT_REJECTED`: 3xx, or any 4xx other than
+  408/429) is quarantined on its first occurrence, so a consumer's 400/401/403/409/422 never
+  delays the stream or consumes the retry budget. The quarantined head holds its own
+  `(application, stream)` — later revisions of that binding are not
   published out of order — while every other stream continues. Nothing is discarded.
 
 ## Transport
@@ -43,8 +46,8 @@ unchanged to the configured consumer endpoint and discards the response body.
 | Response | Class | Effect |
 |---|---|---|
 | 2xx | — | marked published |
-| 408, 429, 5xx, timeouts, IO failure | `TRANSPORT_UNAVAILABLE` | retried with backoff |
-| any other status (including 3xx) | `TRANSPORT_REJECTED` | retried, then quarantined |
+| 408, 429, 5xx, timeouts, IO failure | `TRANSPORT_UNAVAILABLE` | retried with backoff, then quarantined at the budget |
+| any other status (including 3xx) | `TRANSPORT_REJECTED` | quarantined on the first refusal, never retried |
 
 When `ums.outbox.consumer-token` is set it is sent as `Authorization: Bearer …`; mutual TLS and
 workload identity are deployment configuration. The response body is never read or logged.
@@ -110,3 +113,17 @@ retryable status, a refused status, and an unreachable endpoint.
   decision, not a loop.
 - `skip locked` makes concurrent instances safe, but no instance-coordination or failover is
   claimed beyond that.
+
+## Recorded verification
+
+On 9 November 2026, commit `RELAY-PERMANENT-FAILURE` (base `0000412`) changes one rule: a transport
+refusal the boundary already calls permanent (`TRANSPORT_REJECTED`: 3xx, or 4xx other than 408/429)
+is quarantined on its first occurrence instead of consuming the retry budget. Retryable failures
+(`TRANSPORT_UNAVAILABLE`: 408/429/5xx/timeouts/IO) keep the exponential budget and quarantine at
+the configured maximum.
+
+`OutboxRelayTest` proves the permanent path quarantines on the first pass with `attempts = 1` while
+another stream still publishes, the retryable path still exhausts the budget and quarantines as
+`TRANSPORT_UNAVAILABLE`, the 400/404 mapping is unchanged, and the repair runner re-drives a
+quarantined fact. `./gradlew clean check bootJar`: 433 tests, 0 failures, 96.55% line / 80.45%
+branch, JaCoCo gate green.

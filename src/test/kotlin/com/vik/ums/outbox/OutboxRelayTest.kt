@@ -91,11 +91,12 @@ class OutboxRelayTest {
         assertThat(transport.published).containsExactly(first, second)
     }
 
-    @Test fun `repeated failures quarantine a stream without blocking another`() {
+    @Test fun `retryable failures exhaust the budget and quarantine a stream`() {
         val stuck = emit("s1", 1)
         val healthy = emit("s2", 1)
         val later = emit("s1", 2)
         transport.failingStreams += "s1"
+        transport.failureClass = OutboxFailureClass.TRANSPORT_UNAVAILABLE
         val relay = relay(maxAttempts = 2)
 
         repeat(2) {
@@ -111,11 +112,25 @@ class OutboxRelayTest {
         assertThat(jdbc.queryForObject("select quarantined_at is not null from ums_event_outbox where event_id = ?",
             Boolean::class.java, stuck)).isTrue()
         assertThat(jdbc.queryForObject("select failure_class from ums_event_outbox where event_id = ?",
-            String::class.java, stuck)).isEqualTo("TRANSPORT_REJECTED")
+            String::class.java, stuck)).isEqualTo("TRANSPORT_UNAVAILABLE")
 
         // A stream that only becomes due after the quarantine still flows on the next pass.
         emit("s3", 1)
         assertThat(relay.relayOnce()).isEqualTo(RelayPass(1, 0, 0))
+    }
+
+    @Test fun `a permanent refusal is quarantined on the first pass`() {
+        val refused = emit("s1", 1)
+        val healthy = emit("s2", 1)
+        transport.failingStreams += "s1"
+
+        val pass = relay().relayOnce()
+
+        assertThat(pass).isEqualTo(RelayPass(1, 0, 1))
+        assertThat(transport.published).containsExactly(healthy)
+        assertThat(jdbc.queryForObject("""select failure_class || ':' || attempts || ':' ||
+                (quarantined_at is not null) from ums_event_outbox where event_id = ?""",
+            String::class.java, refused)).isEqualTo("TRANSPORT_REJECTED:1:true")
     }
 
     @Test fun `a quarantined fact can be re-driven with the same identity`() {
@@ -321,6 +336,7 @@ class OutboxRelayTest {
         val published = mutableListOf<UUID>()
         val failures = mutableListOf<OutboxFailureClass>()
         val failingStreams = mutableSetOf<String>()
+        var failureClass = OutboxFailureClass.TRANSPORT_REJECTED
         var crashOnce = false
 
         override fun publish(event: OutboxEvent) {
@@ -329,7 +345,7 @@ class OutboxRelayTest {
                 throw AssertionError("crash while publishing")
             }
             if (event.streamId in failingStreams) {
-                throw OutboxTransportException(OutboxFailureClass.TRANSPORT_REJECTED)
+                throw OutboxTransportException(failureClass)
             }
             if (failures.isNotEmpty()) throw OutboxTransportException(failures.removeAt(0))
             published += event.eventId
